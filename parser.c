@@ -62,11 +62,8 @@ static void value(Parser *parser) {
   }
 }
 
-void parse(Parser *parser) {
-  value(parser);
-  Value *valPtr = (Value *)vecGet(&parser->chunk.constants, 0);
-  printf("Parsed: %lf\n", valPtr->as.number);
-  // program(parser);
-}
+static void program(Parser *parser) {}
+
+void parse(Parser *parser) { program(parser); }
 
 #endif

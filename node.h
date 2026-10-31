@@ -14,6 +14,6 @@ typedef enum {
   NODE_ATOM,       // A -> V | NAME
 } NodeType;
 
-typedef enum { NAME, VALUE } AtomType;
+typedef enum { ATOM_NAME, ATOM_VALUE } AtomType;
 
 #endif

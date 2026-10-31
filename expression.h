@@ -32,7 +32,7 @@ typedef struct {
 } GroupingNode;
 
 // P -> G | G ^ P
-typedef struct {
+typedef struct PowerNode {
   NodeType type;
   union {
     GroupingNode *grouping;
@@ -45,7 +45,7 @@ typedef struct {
 } PowerNode;
 
 // U -> P | -U | !U
-typedef struct {
+typedef struct UnaryNode {
   NodeType type;
   union {
     PowerNode *power;
@@ -57,7 +57,7 @@ typedef struct {
 } UnaryNode;
 
 // F -> U | F * U
-typedef struct {
+typedef struct FactorNode {
   NodeType type;
   union {
     UnaryNode *unary;
@@ -70,7 +70,7 @@ typedef struct {
 } FactorNode;
 
 // M -> F | M + F
-typedef struct {
+typedef struct SumNode {
   NodeType type;
   union {
     FactorNode *factor;
@@ -83,7 +83,7 @@ typedef struct {
 } SumNode;
 
 // C -> M | C == M
-typedef struct {
+typedef struct ComparisonNode {
   NodeType type;
   union {
     SumNode *sum;
@@ -96,10 +96,10 @@ typedef struct {
 } ComparisonNode;
 
 // A -> C | NAME = E
-typedef struct {
+typedef struct AssignmentNode {
   NodeType type;
   union {
-    ComparisonNode *sum;
+    ComparisonNode *comparison;
     struct {
       Token *name;
       ExpressionNode *rhs;
@@ -108,7 +108,7 @@ typedef struct {
 } AssignmentNode;
 
 // E -> A
-typedef struct {
+typedef struct ExpressionNode {
   AssignmentNode *assignment;
 } ExpressionNode;
 
