@@ -1,0 +1,48 @@
+Statement = 
+  | FunctionDeclaration
+  | DefineStatement
+  | loopStatement
+  | ifStatement
+  | PrintStatement
+
+BlockStatement =
+    '{' + Statement + '}'
+  | FunctionDeclaration + BlockStatement
+
+--------------------------------------------------------
+
+Expression:
+  Assignment
+
+Assignment:
+  NAME '=' Expression
+  | Comparison
+
+Comparison:
+  Comparison '==' Sum
+  | Sum
+
+Sum:
+  Sum '+' Factor
+  | Factor
+
+Factor:
+  Factor '*' Unary
+  | Unary
+
+Unary:
+  '-' Unary
+  | '!' Unary
+  | Power
+
+Power: 
+  Grouping '^' Power
+  | Grouping
+
+Grouping:
+  '(' Expression ')'
+  | Atom
+
+Atom:
+  VALUE
+  | NAME
