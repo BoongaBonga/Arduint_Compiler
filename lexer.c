@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "common.h"
+#include "errorHandling.h"
 #include "lexer.h"
 
 static bool isAlphabetic(char c) {
@@ -83,9 +84,10 @@ static void skipWhiteSpace(Scanner *lexer) {
           if (!isBeforeEnd(lexer)) continue;
 
           // If the comment is unterminated, report an error
-          fprintf(stderr, "(%d:%td-%d:%td) [Error]: Unterminated Comment\n",
-                  startLine, lexer->start - startLineStart, lexer->line,
-                  lexer->current - lexer->lineStart + 1);
+          customError(startLine, lexer->start - startLineStart, lexer->line,
+                      lexer->current - lexer->lineStart + 1,
+                      "Unterminated comment.");
+
           lexer->current += 2;
           return;
         }
@@ -131,8 +133,7 @@ static Token errorToken(Scanner *lexer, const char *message, int line,
   char *badToken =
       copySourceStr(errorStart, (int)(lexer->current - errorStart));
 
-  fprintf(stderr, "(%d:%td-%d:%td) [Error]: %s '%s'.\n", line, token.offset,
-          lexer->line, endOffset, message, badToken);
+  customError(line, token.offset, lexer->line, endOffset, message, badToken);
 
   free(badToken);
   return token;

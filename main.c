@@ -66,6 +66,8 @@ int main(int argc, char *argv[]) {
 
   parse(&parser);
 
+  printChunk(&parser.chunk, "Program");
+
   // Close down
   free(source);
   freeScanner(&lexer);

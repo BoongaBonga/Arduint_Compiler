@@ -7,7 +7,26 @@
 #include "value.h"
 
 typedef enum {
-  OP_RETURN,
+  OP_ERROR = UINT8_MAX,
+  OP_RETURN = 0,
+  OP_NO_OP,
+  OP_CONSTANT_8,
+  OP_CONSTANT_16,
+  OP_ADD,
+  OP_SUBTRACT,
+  OP_MULTIPLY,
+  OP_DIVIDE,
+  OP_NEGATE,
+  OP_POWER,
+  OP_NOT,
+  OP_AND,
+  OP_OR,
+  OP_EQUALS,
+  OP_NOT_EQUALS,
+  OP_GREATER,
+  OP_GREATER_OR_EQUAL,
+  OP_LESS,
+  OP_LESS_OR_EQUAL,
 } OpCode;
 
 /// @brief Bytecode chunk of uint8_t's

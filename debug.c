@@ -8,9 +8,7 @@
 #include "chunk.h"
 #include "common.h"
 #include "errorHandling.h"
-#include "expression.h"
 #include "lexer.h"
-#include "node.h"
 #include "token.h"
 
 const char *lexemes[68] = {
@@ -130,18 +128,65 @@ void printTokens(Vector *tokens) {
   }
   printf("\n");
 }
-/*
+
+void printLexeme(Token *token) {
+  char *str = copySourceStr(token->start, token->length);
+  printf("%s", str);
+  free(str);
+}
+
+void printValue(Value *value) {
+  switch (value->type) {
+  case NULL_VAL:   printf("NULL"); break;
+  case NUMBER_VAL: printf("%lf", value->as.number); break;
+  case BOOL_VAL:   printf("%d", value->as.boolean); break;
+  default:         printf("ErrorVal"); break;
+  }
+}
+
 static int simpleInstruction(const char *name, int offset) {
   printf("%s\n", name);
   return offset + 1;
+}
+
+static int constantInstruction(const char *name, bool is16b, Chunk *chunk,
+                               int offset) {
+  int constant;
+  if (is16b) {
+    uint8_t constantL = *(uint8_t *)vecGet(&chunk->byteCode, offset + 1);
+    uint8_t constantH = *(uint8_t *)vecGet(&chunk->byteCode, offset + 2);
+    constant = ((uint16_t)constantL << 8) | ((uint16_t)constantH);
+  } else {
+    constant = *(uint8_t *)vecGet(&chunk->byteCode, offset + 1);
+  }
+
+  printf("%-16s %4d '", name, constant);
+  Value *value = (Value *)vecGet(&chunk->constants, constant);
+  printValue(value);
+  printf("'\n");
+  return offset + 2 + is16b;
 }
 
 static int printInstruction(Chunk *chunk, int offset) {
   printf("%04d ", offset);
 
   uint8_t instruction = *(uint8_t *)vecGet(&chunk->byteCode, offset);
+
   switch (instruction) {
   case OP_RETURN: return simpleInstruction("OP_RETURN", offset);
+  case OP_ERROR:  return simpleInstruction("ERROR_OP", offset);
+  case OP_NO_OP:  return simpleInstruction("OP_NO_OP", offset);
+  case OP_CONSTANT_8:
+    return constantInstruction("OP_CONSTANT_8", false, chunk, offset);
+  case OP_CONSTANT_16:
+    return constantInstruction("OP_CONSTANT_16", true, chunk, offset);
+  case OP_ADD:      return simpleInstruction("OP_ADD", offset);
+  case OP_SUBTRACT: return simpleInstruction("OP_SUBTRACT", offset);
+  case OP_MULTIPLY: return simpleInstruction("OP_MULTIPLY", offset);
+  case OP_DIVIDE:   return simpleInstruction("OP_DIVIDE", offset);
+  case OP_POWER:    return simpleInstruction("OP_POWER", offset);
+  case OP_NEGATE:   return simpleInstruction("OP_NEGATE", offset);
+  case OP_NOT:      return simpleInstruction("OP_NOT", offset);
   default: defaultError("Unknown opCode %d.", instruction); return offset + 1;
   }
 }
@@ -152,162 +197,6 @@ void printChunk(Chunk *chunk, const char *name) {
   for (int offset = 0; offset < chunk->byteCode.count;) {
     offset = printInstruction(chunk, offset);
   }
-}*/
-
-void printExpression(ExpressionNode *expr);
-
-static void printLexeme(Token *token) {
-  char *str = copySourceStr(token->start, token->length);
-  printf("%s", str);
-  free(str);
-}
-
-static void printValue(Value *value) {
-  switch (value->type) {
-  case NULL_VAL:   printf("NULL"); break;
-  case NUMBER_VAL: printf("%lf", value->as.number); break;
-  default:         printf("ErrorVal"); break;
-  }
-}
-
-static void printAtom(AtomNode *a) {
-  switch (a->type) {
-  case ATOM_NAME:  printLexeme(a->as.name); break;
-  case ATOM_VALUE: printValue(a->as.value); break;
-  }
-}
-
-static void printGrouping(GroupingNode *g) {
-  if (g == NULL) return;
-
-  switch (g->type) {
-  case NODE_ATOM:     printAtom(g->as.atom);
-  case NODE_GROUPING: {
-    printf("(");
-    printf(" ");
-    printExpression(g->as.expression);
-    printf(" )");
-    break;
-  }
-  }
-}
-
-static void printPower(PowerNode *p) {
-  if (p == NULL) return;
-
-  switch (p->type) {
-  case NODE_GROUPING: printGrouping(p->as.grouping); break;
-  case NODE_POWER:    {
-    printf("(^ ");
-    printGrouping(p->as.power.lhs);
-    printf(" ");
-    printPower(p->as.power.rhs);
-    printf(")");
-    break;
-  }
-  }
-}
-
-static void printUnary(UnaryNode *u) {
-  if (u == NULL) return;
-
-  switch (u->type) {
-  case NODE_POWER: printPower(u->as.power); break;
-  case NODE_UNARY: {
-    printf("(");
-    printLexeme(u->as.unary.op);
-    printf(" ");
-    printUnary(u->as.unary.rhs);
-    printf(")");
-    break;
-  }
-  }
-}
-
-static void printFactor(FactorNode *f) {
-  if (f == NULL) return;
-
-  switch (f->type) {
-  case NODE_UNARY:  printUnary(f->as.unary); break;
-  case NODE_FACTOR: {
-    printf("(");
-    printLexeme(f->as.factor.op);
-    printf(" ");
-    printFactor(f->as.factor.lhs);
-    printf(" ");
-    printUnary(f->as.factor.rhs);
-    printf(")");
-    break;
-  }
-  }
-}
-
-static void printSum(SumNode *sum) {
-  if (sum == NULL) return;
-
-  switch (sum->type) {
-  case NODE_FACTOR: printFactor(sum->as.factor); break;
-  case NODE_SUM:    {
-    printf("(");
-    printLexeme(sum->as.sum.op);
-    printf(" ");
-    printSum(sum->as.sum.lhs);
-    printf(" ");
-    printFactor(sum->as.sum.rhs);
-    printf(")");
-    break;
-  }
-  }
-}
-
-static void printComparison(ComparisonNode *comp) {
-  if (comp == NULL) return;
-
-  switch (comp->type) {
-  case NODE_SUM:        printSum(comp->as.sum); break;
-  case NODE_COMPARISON: {
-    printf("(");
-    printLexeme(comp->as.comparison.op);
-    printf(" ");
-    printComparison(comp->as.comparison.lhs);
-    printf(" ");
-    printSum(comp->as.comparison.rhs);
-    printf(")");
-    break;
-  }
-  }
-}
-
-static void printAssignment(AssignmentNode *assign) {
-  if (assign == NULL) return;
-
-  switch (assign->type) {
-  case NODE_COMPARISON: printComparison(assign->as.comparison); break;
-  case NODE_ASSIGN:     {
-    printf("(");
-    printLexeme(assign->as.assignment.name);
-    printf(" = ");
-    printExpression(assign->as.assignment.rhs);
-    printf(")");
-    break;
-  }
-  }
-}
-
-void printExpression(ExpressionNode *expr) {
-  if (expr == NULL) return;
-
-  printf("(Expr ");
-  printAssignment(expr->assignment);
-  printf(")");
-}
-
-void printProgramTree(ProgramNode *program) {
-  if (program == NULL) return;
-
-  printf("Program: (");
-  printExpression(program->expression);
-  printf(")\n");
 }
 
 #endif

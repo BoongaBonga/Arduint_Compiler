@@ -1,6 +1,8 @@
 #ifndef ARDUINT_PARSER_H
 #define ARDUINT_PARSER_H
 
+#include <stdbool.h>
+
 #include "chunk.h"
 #include "token.h"
 
@@ -8,6 +10,7 @@ typedef struct {
   Vector *tokens;
   int currentIndex;
   Chunk chunk;
+  bool hadError;
 } Parser;
 
 Parser initParser(Vector *tokens);

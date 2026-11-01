@@ -1,3 +1,0 @@
-#ifndef ARDUINT_STATEMENT_H
-#define ARDUINT_STATEMENT_H
-#endif
