@@ -1,0 +1,3 @@
+#ifndef ARDUINT_COLLECTION_C
+#define ARDUINT_COLLECTION_C
+#endif

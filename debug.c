@@ -11,10 +11,11 @@
 #include "lexer.h"
 #include "token.h"
 
-const char *lexemes[68] = {
+const char *lexemes[70] = {
     "IDENTIFIER",
     "NUMBER",
     "STRING",
+    "NULL",
 
     // Control flow
     "IF",
@@ -54,6 +55,7 @@ const char *lexemes[68] = {
     "AND",
     "NOT",
     "OR",
+    "XOR",
 
     // One-character tokens
     "BACKSLASH",
@@ -135,11 +137,18 @@ void printLexeme(Token *token) {
   free(str);
 }
 
+void printObject(Object *object) {
+  switch (object->type) {
+  case OBJ_STRING: printf("\"%s\"", ((ObjString *)object)->chars);
+  }
+}
+
 void printValue(Value *value) {
   switch (value->type) {
-  case NULL_VAL:   printf("NULL"); break;
-  case NUMBER_VAL: printf("%lf", value->as.number); break;
-  case BOOL_VAL:   printf("%d", value->as.boolean); break;
+  case VAL_NULL:   printf("NULL"); break;
+  case VAL_NUMBER: printf("%lf", value->as.number); break;
+  case VAL_OBJECT: printObject(value->as.object); break;
+  case VAL_BOOL:   printf("%d", value->as.boolean); break;
   default:         printf("ErrorVal"); break;
   }
 }
@@ -180,13 +189,42 @@ static int printInstruction(Chunk *chunk, int offset) {
     return constantInstruction("OP_CONSTANT_8", false, chunk, offset);
   case OP_CONSTANT_16:
     return constantInstruction("OP_CONSTANT_16", true, chunk, offset);
-  case OP_ADD:      return simpleInstruction("OP_ADD", offset);
-  case OP_SUBTRACT: return simpleInstruction("OP_SUBTRACT", offset);
-  case OP_MULTIPLY: return simpleInstruction("OP_MULTIPLY", offset);
-  case OP_DIVIDE:   return simpleInstruction("OP_DIVIDE", offset);
-  case OP_POWER:    return simpleInstruction("OP_POWER", offset);
-  case OP_NEGATE:   return simpleInstruction("OP_NEGATE", offset);
-  case OP_NOT:      return simpleInstruction("OP_NOT", offset);
+  case OP_ASSIGN:     return simpleInstruction("OP_ASSIGN", offset);
+  case OP_ADD:        return simpleInstruction("OP_ADD", offset);
+  case OP_SUBTRACT:   return simpleInstruction("OP_SUBTRACT", offset);
+  case OP_MULTIPLY:   return simpleInstruction("OP_MULTIPLY", offset);
+  case OP_DIVIDE:     return simpleInstruction("OP_DIVIDE", offset);
+  case OP_MODULO:     return simpleInstruction("OP_MODULO", offset);
+  case OP_POWER:      return simpleInstruction("OP_POWER", offset);
+  case OP_NEGATE:     return simpleInstruction("OP_NEGATE", offset);
+  case OP_NOT:        return simpleInstruction("OP_NOT", offset);
+  case OP_AND:        return simpleInstruction("OP_AND", offset);
+  case OP_OR:         return simpleInstruction("OP_OR", offset);
+  case OP_XOR:        return simpleInstruction("OP_XOR", offset);
+
+  case OP_EQUALS:     return simpleInstruction("OP_EQUALS", offset);
+  case OP_NOT_EQUALS: return simpleInstruction("OP_NOT_EQUALS", offset);
+  case OP_GREATER:    return simpleInstruction("OP_GREATER", offset);
+  case OP_GREATER_OR_EQUAL:
+    return simpleInstruction("OP_GREATER_OR_EQUAL", offset);
+  case OP_LESS:          return simpleInstruction("OP_LESS", offset);
+  case OP_LESS_OR_EQUAL: return simpleInstruction("OP_LESS_OR_EQUAL", offset);
+  case OP_AND_AND:       return simpleInstruction("OP_AND_AND", offset);
+  case OP_OR_OR:         return simpleInstruction("OP_OR_OR", offset);
+
+  case OP_MINUS_EQUALS:  return simpleInstruction("OP_MINUS_EQUALS", offset);
+  case OP_PLUS_EQUALS:   return simpleInstruction("OP_PLUS_EQUALS", offset);
+  case OP_DIVIDE_EQUALS: return simpleInstruction("OP_DIVIDE_EQUALS", offset);
+  case OP_MODULO_EQUALS: return simpleInstruction("OP_MODULO_EQUALS", offset);
+  case OP_MULTIPLY_EQUALS:
+    return simpleInstruction("OP_MULTIPLY_EQUALS", offset);
+  case OP_POWER_EQUALS:   return simpleInstruction("OP_POWER_EQUALS", offset);
+  case OP_AND_EQUALS:     return simpleInstruction("OP_AND_EQUALS", offset);
+  case OP_OR_EQUALS:      return simpleInstruction("OP_OR_EQUALS", offset);
+  case OP_POST_DECREMENT: return simpleInstruction("OP_POST_DECREMENT", offset);
+  case OP_POST_INCREMENT: return simpleInstruction("OP_POST_INCREMENT", offset);
+  case OP_PRE_DECREMENT:  return simpleInstruction("OP_PRE_DECREMENT", offset);
+  case OP_PRE_INCREMENT:  return simpleInstruction("OP_PRE_INCREMENT", offset);
   default: defaultError("Unknown opCode %d.", instruction); return offset + 1;
   }
 }

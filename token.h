@@ -5,6 +5,7 @@ typedef enum {
   TOKEN_IDENTIFIER,
   TOKEN_NUMBER,
   TOKEN_STRING,
+  TOKEN_NULL,
 
   // Control flow
   TOKEN_IF,
@@ -44,6 +45,7 @@ typedef enum {
   TOKEN_AND,
   TOKEN_NOT,
   TOKEN_OR,
+  TOKEN_XOR,
 
   // One-character tokens
   TOKEN_BACKSLASH,

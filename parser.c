@@ -9,23 +9,40 @@
 #include "debug.h"
 #include "errorHandling.h"
 #include "lexer.h"
+#include "object.h"
 #include "parser.h"
 #include "value.h"
 
 typedef enum {
-  NODE_PROGRAM,    // S -> E
-  NODE_EXPRESSION, // E -> A
-  NODE_ASSIGN,     // A -> C | NAME = E
-  NODE_COMPARISON, // C -> M | C == M
-  NODE_SUM,        // M -> F | M + F
-  NODE_FACTOR,     // F -> U | F * U
-  NODE_UNARY,      // U -> P | -U | !U
-  NODE_POWER,      // P -> G | G ^ P
-  NODE_GROUPING,   // G -> A | ( E )
-  NODE_ATOM,       // A -> V | NAME
-} NodeType;
+  PREC_NONE,
+  PREC_PROGRAM,    // S -> E
+  PREC_EXPRESSION, // E -> A
+  PREC_ASSIGN,     // A -> O | NAME = E
+  PREC_L_OR,       // O -> N | O or N
+  PREC_L_AND,      // N -> C | N and C
+  PREC_COMPARISON, // C -> R | C == R
+  PREC_B_OR,       // R -> X | R '|' X
+  PREC_B_XOR,      // X -> D | X xor D
+  PREC_B_AND,      // D -> M | D '&' M
+  PREC_SUM,        // M -> F | M + F
+  PREC_FACTOR,     // F -> U | F * U
+  PREC_UNARY,      // U -> P | -U | !U
+  PREC_POWER,      // P -> T | G ^ P
+  PREC_POSTFIX,    // T -> G | T++
+  PREC_GROUPING,   // G -> A | ( E )
+  PREC_ATOM,       // A -> V | NAME
+} Precedence;
 
 typedef enum { ATOM_NAME, ATOM_VALUE } AtomType;
+
+typedef enum { PREFIX, INFIX, POSTFIX } Position;
+typedef enum { LHS, RHS } ReturnSide;
+
+typedef struct {
+  OpCode prefix;
+  OpCode infix;
+  OpCode postfix;
+} ParseRule;
 
 extern const char *lexemes;
 
@@ -65,6 +82,14 @@ static bool consume(Parser *parser, TokenType expected, Token *errorStart,
   return false;
 }
 
+static void pushOp(Parser *parser, OpCode op) {
+  writeOperation(&parser->chunk, op);
+}
+static void pushOps(Parser *parser, OpCode op1, OpCode op2) {
+  writeOperation(&parser->chunk, op1);
+  writeOperation(&parser->chunk, op2);
+}
+
 static void errorUnexpectedToken(Token *token) {
   char *src = copySourceStr(token->start, token->length);
   errorFromToken(token, "Unexpected token '%s'", src);
@@ -72,17 +97,13 @@ static void errorUnexpectedToken(Token *token) {
 }
 
 static Value number(const char *start, int length) {
-  Value value;
-  value.type = NUMBER_VAL;
-
   char *numStr = copySourceStr(start, length);
-
   char *endPtr;
-  value.as.number = strtod(numStr, &endPtr);
 
+  double value = strtod(numStr, &endPtr);
   free(numStr);
 
-  return value;
+  return NUMBER_VAL(value);
 }
 
 static void value(Parser *parser, Token *val) {
@@ -93,13 +114,19 @@ static void value(Parser *parser, Token *val) {
     break;
   }
   case TOKEN_TRUE: {
-    value.type = BOOL_VAL;
-    value.as.boolean = true;
+    value = BOOL_VAL(true);
     break;
   }
   case TOKEN_FALSE: {
-    value.type = BOOL_VAL;
-    value.as.boolean = false;
+    value = BOOL_VAL(false);
+    break;
+  }
+  case TOKEN_NULL: {
+    value = NULL_VAL;
+    break;
+  }
+  case TOKEN_STRING: {
+    value = OBJECT_VAL(copyStringVal(val->start + 1, val->length - 2));
     break;
   }
   default: {
@@ -113,13 +140,11 @@ static void value(Parser *parser, Token *val) {
 
   // If the constant offset is bigger than 255, switch to 2-byte adresses
   if (parser->chunk.constants.count < 256) {
-    writeOperation(&parser->chunk, OP_CONSTANT_8);
-    writeOperation(&parser->chunk, parser->chunk.constants.count);
+    pushOps(parser, OP_CONSTANT_8, parser->chunk.constants.count);
   } else if (parser->chunk.constants.count < UINT16_MAX) {
-    writeOperation(&parser->chunk, OP_CONSTANT_16);
+    pushOp(parser, OP_CONSTANT_16);
     uint16_t index = parser->chunk.constants.count;
-    writeOperation(&parser->chunk, (uint8_t)(index >> 8));
-    writeOperation(&parser->chunk, (uint8_t)index);
+    pushOps(parser, (uint8_t)(index >> 8), (uint8_t)index);
   } else {
     errorFromToken(val, "Too many constants.");
   }
@@ -127,90 +152,162 @@ static void value(Parser *parser, Token *val) {
   writeConstant(&parser->chunk, value);
 }
 
-typedef enum { LHS, RHS } ReturnSide;
+static void identifier(Parser *parser, Token *name) {}
+
 static int infixBindingPower(TokenType op, ReturnSide retRhs) {
   switch (op) {
+  case TOKEN_AND_AND:        return PREC_L_AND * 2 + retRhs;
+  case TOKEN_OR_OR:          return PREC_L_OR * 2 + retRhs;
+
+  case TOKEN_GREATER:
+  case TOKEN_GREATER_EQUALS:
+  case TOKEN_LESS:
+  case TOKEN_LESS_EQUALS:
+  case TOKEN_EQUALS_EQUALS:
+  case TOKEN_NOT_EQUALS:     return PREC_COMPARISON * 2 + retRhs;
+
+  case TOKEN_OR:             return PREC_B_OR * 2 + retRhs;
+  case TOKEN_XOR:            return PREC_B_XOR * 2 + retRhs;
+  case TOKEN_AND:            return PREC_B_AND * 2 + retRhs;
+
   case TOKEN_PLUS:
-  case TOKEN_MINUS: return NODE_SUM * 2 + retRhs;
+  case TOKEN_MINUS:          return PREC_SUM * 2 + retRhs;
   case TOKEN_STAR:
-  case TOKEN_SLASH: return NODE_FACTOR * 2 + retRhs;
-  case TOKEN_POWER: return NODE_POWER * 2 + !retRhs;
-  default:          return -1;
+  case TOKEN_PERCENT:
+  case TOKEN_SLASH:          return PREC_FACTOR * 2 + retRhs;
+  case TOKEN_POWER:          return PREC_POWER * 2 + !retRhs;
+
+  default:                   return -1;
   }
 }
 
 static int prefixBindingPower(TokenType op) {
   switch (op) {
+  case TOKEN_PLUS_PLUS:
+  case TOKEN_MINUS_MINUS:
   case TOKEN_MINUS:
   case TOKEN_NOT:
-  case TOKEN_PLUS:               return NODE_UNARY * 2;
-  case TOKEN_LEFT_ROUND_BRACKET: return NODE_GROUPING * 2;
+  case TOKEN_PLUS:               return PREC_UNARY * 2;
+  case TOKEN_LEFT_ROUND_BRACKET: return PREC_GROUPING * 2;
   default:                       return -1;
   }
 }
 
-typedef enum { PREFIX, INFIX } Position;
-static uint8_t getOp(TokenType type, Position infix) {
-  switch (type) {
-  case TOKEN_PLUS:  return infix ? OP_ADD : OP_NO_OP;
-  case TOKEN_MINUS: return infix ? OP_SUBTRACT : OP_NEGATE;
-  case TOKEN_STAR:  return infix ? OP_MULTIPLY : -1;
-  case TOKEN_SLASH: return infix ? OP_DIVIDE : -1;
-  case TOKEN_POWER: return infix ? OP_POWER : -1;
-  case TOKEN_NOT:   return infix ? -1 : OP_NOT;
-  default:          return -1;
+const OpCode tokenOps[69][3] = {
+    // Operators
+    [TOKEN_PLUS] = {OP_ERROR, OP_ADD, OP_ERROR},
+    [TOKEN_MINUS] = {OP_NEGATE, OP_SUBTRACT, OP_ERROR},
+    [TOKEN_SLASH] = {OP_ERROR, OP_DIVIDE, OP_ERROR},
+    [TOKEN_STAR] = {OP_ERROR, OP_MULTIPLY, OP_ERROR},
+    [TOKEN_POWER] = {OP_ERROR, OP_POWER, OP_ERROR},
+    [TOKEN_AND] = {OP_ERROR, OP_AND, OP_ERROR},
+    [TOKEN_NOT] = {OP_NOT, OP_ERROR, OP_ERROR},
+    [TOKEN_OR] = {OP_ERROR, OP_OR, OP_ERROR},
+    [TOKEN_XOR] = {OP_ERROR, OP_XOR, OP_ERROR},
+
+    // One-character tokens
+    [TOKEN_EQUALS] = {OP_ERROR, OP_ASSIGN, OP_ERROR},
+    [TOKEN_PERCENT] = {OP_ERROR, OP_MODULO,
+                       OP_ERROR}, // TODO: maybe also postfix
+
+    [TOKEN_LESS] = {OP_ERROR, OP_LESS, OP_ERROR},
+    [TOKEN_GREATER] = {OP_ERROR, OP_GREATER, OP_ERROR},
+
+    // Two-character tokens
+    [TOKEN_EQUALS_EQUALS] = {OP_ERROR, OP_EQUALS, OP_ERROR},
+    [TOKEN_GREATER_EQUALS] = {OP_ERROR, OP_GREATER_OR_EQUAL, OP_ERROR},
+    [TOKEN_LESS_EQUALS] = {OP_ERROR, OP_LESS_OR_EQUAL, OP_ERROR},
+    [TOKEN_NOT_EQUALS] = {OP_ERROR, OP_NOT_EQUALS, OP_ERROR},
+
+    [TOKEN_MINUS_EQUALS] = {OP_ERROR, OP_MINUS_EQUALS, OP_ERROR},
+    [TOKEN_PLUS_EQUALS] = {OP_ERROR, OP_PLUS_EQUALS, OP_ERROR},
+    [TOKEN_SLASH_EQUALS] = {OP_ERROR, OP_DIVIDE_EQUALS, OP_ERROR},
+    [TOKEN_STAR_EQUALS] = {OP_ERROR, OP_MULTIPLY_EQUALS, OP_ERROR},
+    [TOKEN_POWER_EQUALS] = {OP_ERROR, OP_POWER_EQUALS, OP_ERROR},
+    [TOKEN_AND_EQUALS] = {OP_ERROR, OP_AND_EQUALS, OP_ERROR},
+    [TOKEN_OR_EQUALS] = {OP_ERROR, OP_OR_EQUALS, OP_ERROR},
+    [TOKEN_PERCENT_EQUALS] = {OP_ERROR, OP_MODULO_EQUALS, OP_ERROR},
+
+    [TOKEN_PLUS_PLUS] = {OP_PRE_INCREMENT, OP_ERROR, OP_POST_INCREMENT},
+    [TOKEN_MINUS_MINUS] = {OP_PRE_DECREMENT, OP_ERROR, OP_POST_DECREMENT},
+    [TOKEN_AND_AND] = {OP_ERROR, OP_AND_AND, OP_ERROR},
+    [TOKEN_OR_OR] = {OP_ERROR, OP_OR_OR, OP_ERROR},
+};
+
+static uint8_t getOp(TokenType type, Position pos) {
+  return tokenOps[type][pos];
+}
+
+static void expressionBp(Parser *parser, int minBp);
+
+static int prefix(Parser *parser, Token *current, int minBp) {
+  switch (current->type) {
+
+    // Values
+  case TOKEN_NUMBER:
+  case TOKEN_STRING:
+  case TOKEN_FALSE:
+  case TOKEN_TRUE:
+  case TOKEN_NULL:
+    value(parser, current);
+    return 0;
+
+    // Assignment & variables
+  case TOKEN_IDENTIFIER: identifier(parser, current); return 0;
+
+  // Prefix
+  case TOKEN_PLUS:       return 0;
+  case TOKEN_MINUS:
+  case TOKEN_NOT:        {
+    int rightBindingPower = prefixBindingPower(current->type);
+    expressionBp(parser, rightBindingPower);
+
+    pushOp(parser, getOp(current->type, PREFIX));
+    return 0;
   }
+
+  // Brackets
+  case TOKEN_LEFT_ROUND_BRACKET: {
+    expressionBp(parser, 0);
+    consume(parser, TOKEN_RIGHT_ROUND_BRACKET, current,
+            "Found no closing parentheses after '('.");
+    return 0;
+  }
+
+  default: {
+    // Report error and try parsing the next token
+    errorUnexpectedToken(current);
+    parser->hadError = true;
+    return -1;
+  }
+  }
+}
+
+static int infix(Parser *parser, Token *current, int minBp) {
+  TokenType op = current->type;
+  int lBindingPower = infixBindingPower(op, LHS);
+  int rBindingPower = infixBindingPower(op, RHS);
+
+  if (lBindingPower < minBp || lBindingPower == -1) return 1;
+
+  next(parser);
+
+  expressionBp(parser, rBindingPower);
+
+  pushOp(parser, getOp(current->type, INFIX));
 }
 
 static void expressionBp(Parser *parser, int minBp) {
   Token *current = next(parser);
 
-  switch (current->type) {
-    // Values
-  case TOKEN_NUMBER:
-  case TOKEN_STRING:
-  case TOKEN_FALSE:
-  case TOKEN_TRUE:   value(parser, current); break;
-  // Infix
-  case TOKEN_PLUS:
-  case TOKEN_MINUS:
-  case TOKEN_NOT:    {
-    int rightBindingPower = prefixBindingPower(current->type);
-    expressionBp(parser, rightBindingPower);
-
-    writeOperation(&parser->chunk, getOp(current->type, PREFIX));
-    break;
-  }
-  case TOKEN_LEFT_ROUND_BRACKET: {
-    expressionBp(parser, 0);
-    consume(parser, TOKEN_RIGHT_ROUND_BRACKET, current,
-            "Found no closing parentheses after '('.");
-    break;
-  }
-  case TOKEN_EOF: return;
-  default:        {
-    // Report error and try parsing the next token
-    errorUnexpectedToken(current);
-    parser->hadError = true;
-    return;
-  }
-  }
+  if (current->type == TOKEN_EOF) return;
+  if (prefix(parser, current, minBp) == -1) return;
 
   for (;;) {
     Token *current = peek(parser);
     if (current->type == TOKEN_EOF) break;
 
-    TokenType op = current->type;
-    int lBindingPower = infixBindingPower(op, LHS);
-    int rBindingPower = infixBindingPower(op, RHS);
-
-    if (lBindingPower < minBp || lBindingPower == -1) break;
-
-    next(parser);
-
-    expressionBp(parser, rBindingPower);
-
-    writeOperation(&parser->chunk, getOp(current->type, INFIX));
+    if (infix(parser, current, minBp) == 1) break;
   }
 }
 
@@ -218,7 +315,7 @@ static void expression(Parser *parser) { expressionBp(parser, 0); }
 
 static void program(Parser *parser) {
   expression(parser);
-  writeOperation(&parser->chunk, OP_RETURN);
+  pushOp(parser, OP_RETURN);
 }
 
 void parse(Parser *parser) { program(parser); }

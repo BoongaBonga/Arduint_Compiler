@@ -205,7 +205,10 @@ static TokenType identifierType(Scanner *lexer) {
     return checkKeyword(lexer, 1, 1, "s", TOKEN_MS);
   }
   case 'N':
-  case 'n': return checkKeyword(lexer, 1, 2, "ot", TOKEN_NOT);
+  case 'n': {
+    if (identifierLen == 3) return checkKeyword(lexer, 1, 2, "ot", TOKEN_NOT);
+    return checkKeyword(lexer, 1, 3, "ull", TOKEN_NULL);
+  }
   case 'O':
   case 'o': return checkKeyword(lexer, 1, 1, "r", TOKEN_OR_OR);
   case 'P':
@@ -228,6 +231,8 @@ static TokenType identifierType(Scanner *lexer) {
   }
   case 'W':
   case 'w': return checkKeyword(lexer, 1, 4, "hile", TOKEN_WHILE);
+  case 'X':
+  case 'x': return checkKeyword(lexer, 1, 2, "or", TOKEN_XOR);
   }
   return TOKEN_IDENTIFIER;
 }

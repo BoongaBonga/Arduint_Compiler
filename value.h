@@ -3,14 +3,29 @@
 
 #include <stdbool.h>
 
-typedef enum { BOOL_VAL, NUMBER_VAL, NULL_VAL } ValueType;
+#include "object.h"
 
-typedef struct {
+typedef struct Object Object;
+typedef struct ObjString ObjString;
+
+#define NUMBER_VAL(num) ((Value){VAL_NUMBER, {.number = (num)}})
+#define BOOL_VAL(bool) ((Value){VAL_BOOL, {.boolean = (bool)}})
+#define NULL_VAL ((Value){VAL_NULL, {0}})
+#define OBJECT_VAL(obj) ((Value){VAL_OBJECT, {.object = (Object *)(obj)}})
+
+typedef enum { VAL_BOOL, VAL_NUMBER, VAL_NULL, VAL_OBJECT } ValueType;
+
+struct Value {
   ValueType type;
   union {
     bool boolean;
     double number;
+    Object *object;
   } as;
-} Value;
+};
+
+static inline bool isObjType(Value *value, ObjType objType) {
+  return value->type == VAL_OBJECT && value->as.object->type == objType;
+}
 
 #endif

@@ -1,4 +1,4 @@
-SOURCE = chunk.c common.c debug.c errorHandling.c lexer.c main.c memory.c parser.c
+SOURCE = chunk.c collection.c common.c debug.c errorHandling.c lexer.c main.c memory.c object.c parser.c
 TARGET = lexer
 
 ARGUMENT = test.ardi

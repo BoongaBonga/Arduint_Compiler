@@ -16,10 +16,30 @@ Expression:
 
 Assignment:
   NAME '=' Expression
+  | LogicalOr
+
+LogicalOr:
+  LogicalOr '|' LogicalAnd
+  | LogicalAnd
+
+LogicalAnd:
+  LogicalAnd 'and' Comparison  
   | Comparison
 
 Comparison:
-  Comparison '==' Sum
+  Comparison '==' BitwiseOr 
+  | BitwiseOr
+
+BitwiseOr:
+  BitwiseOr '|' BitwiseXor
+  | BitwiseXor
+
+BitwiseXor:
+  BitwiseXor 'xor' BitwiseAnd
+  | BitwiseAnd
+
+BitwiseAnd:
+  BitwiseAnd '&' Sum    
   | Sum
 
 Sum:
@@ -36,7 +56,12 @@ Unary:
   | Power
 
 Power: 
-  Grouping '^' Power
+  PostFix '^' Power
+  | PostFix
+
+PostFix:
+  PostFix '++'
+  | PostFix '--'
   | Grouping
 
 Grouping:
