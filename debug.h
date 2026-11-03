@@ -2,7 +2,7 @@
 #define ARDUINT_DEBUG_H
 
 #include "chunk.h"
-#include "common.h"
+#include "collection.h"
 #include "token.h"
 
 void printToken(Token *token);

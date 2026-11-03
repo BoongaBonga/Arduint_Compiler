@@ -6,7 +6,7 @@
 #include <string.h>
 
 #include "chunk.h"
-#include "common.h"
+#include "collection.h"
 #include "errorHandling.h"
 #include "lexer.h"
 #include "token.h"

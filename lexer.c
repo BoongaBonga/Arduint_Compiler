@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "common.h"
+#include "collection.h"
 #include "errorHandling.h"
 #include "lexer.h"
 

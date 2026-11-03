@@ -6,7 +6,9 @@
 #include "object.h"
 
 typedef struct Object Object;
+typedef enum ObjType ObjType;
 typedef struct ObjString ObjString;
+typedef struct Value Value;
 
 #define NUMBER_VAL(num) ((Value){VAL_NUMBER, {.number = (num)}})
 #define BOOL_VAL(bool) ((Value){VAL_BOOL, {.boolean = (bool)}})

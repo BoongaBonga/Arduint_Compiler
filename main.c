@@ -2,10 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "common.h"
+#include "collection.h"
 #include "debug.h"
 #include "errorHandling.h"
 #include "lexer.h"
+#include "object.h"
 #include "parser.h"
 
 static char *readFile(const char *path) {

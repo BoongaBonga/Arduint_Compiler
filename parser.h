@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 #include "chunk.h"
+#include "collection.h"
 #include "token.h"
 
 typedef struct {
@@ -11,6 +12,7 @@ typedef struct {
   int currentIndex;
   Chunk chunk;
   bool hadError;
+  Table stringPool;
 } Parser;
 
 Parser initParser(Vector *tokens);

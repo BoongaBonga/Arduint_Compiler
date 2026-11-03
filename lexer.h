@@ -1,7 +1,7 @@
 #ifndef ARDUINT_LEXER_H
 #define ARDUINT_LEXER_H
 
-#include "common.h"
+#include "collection.h"
 #include "token.h"
 
 typedef struct {

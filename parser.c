@@ -5,7 +5,7 @@
 #include <stdio.h>
 
 #include "chunk.h"
-#include "common.h"
+#include "collection.h"
 #include "debug.h"
 #include "errorHandling.h"
 #include "lexer.h"
@@ -52,10 +52,14 @@ Parser initParser(Vector *tokens) {
   parser.tokens = tokens;
   parser.chunk = initChunk();
   parser.hadError = false;
+  parser.stringPool = initTable();
   return parser;
 }
 
-void freeParser(Parser *parser) { freeChunk(&parser->chunk); }
+void freeParser(Parser *parser) {
+  freeChunk(&parser->chunk);
+  freeTable(&parser->stringPool);
+}
 
 inline static Token *peek(Parser *parser) {
   return vecGet(parser->tokens, parser->currentIndex);
@@ -126,7 +130,8 @@ static void value(Parser *parser, Token *val) {
     break;
   }
   case TOKEN_STRING: {
-    value = OBJECT_VAL(copyStringVal(val->start + 1, val->length - 2));
+    value = OBJECT_VAL(
+        copyStringVal(val->start + 1, val->length - 2, &parser->stringPool));
     break;
   }
   default: {

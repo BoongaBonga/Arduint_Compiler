@@ -21,10 +21,21 @@ void freeObject(Object *object) {
   switch (object->type) {
   case OBJ_STRING: {
     ObjString *string = (ObjString *)object;
-    free(string->chars);
+    FREE_ARRAY(char, string->chars, string->length + 1);
     FREE(ObjString, object);
     break;
   }
+  }
+}
+
+void freeObjects(Object *object) {
+  Object *last = object;
+  Object *current = NULL;
+  for (;;) {
+    if (last == NULL) return;
+    current = last->next;
+    freeObject(last);
+    last = current;
   }
 }
 

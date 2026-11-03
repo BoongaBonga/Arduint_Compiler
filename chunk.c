@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #include "chunk.h"
-#include "common.h"
+#include "collection.h"
 #include "value.h"
 
 Chunk initChunk() {

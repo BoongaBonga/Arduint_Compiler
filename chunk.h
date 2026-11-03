@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "common.h"
+#include "collection.h"
 #include "value.h"
 
 typedef enum {

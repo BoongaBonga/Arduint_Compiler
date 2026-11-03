@@ -1,13 +1,13 @@
 #ifndef ARDUINT_OBJECT_H
 #define ARDUINT_OBJECT_H
 
-#include <stdbool.h>
+#include <stdint.h>
 
-#include "common.h"
+typedef struct Table Table;
 
 typedef struct Object Object;
+typedef enum ObjType ObjType;
 typedef struct ObjString ObjString;
-typedef struct Value Value;
 
 #define OBJ_TYPE(value) ((value).as.object->type)
 
@@ -15,25 +15,26 @@ typedef struct Value Value;
 
 #define AS_OBJ_STRING(value) ((ObjString *)((value).as.object))
 
-typedef enum {
+enum ObjType {
   OBJ_STRING,
   OBJ_FUNCTION,
-} ObjType;
+};
 
 struct Object {
   ObjType type;
-  // struct Object *next;
+  struct Object *next;
 };
 
 struct ObjString {
   Object object;
   int length;
   char *chars;
+  uint32_t hash;
 };
 
 /// @brief copies a string as a value, will be garbage-collected
-ObjString *copyStringVal(const char *chars, int length);
+ObjString *copyStringVal(const char *chars, int length, Table *stringPool);
 
-static inline bool isObjType(Value *value, ObjType objType);
+ObjString *takeString(char *chars, int length, Table *stringPool);
 
 #endif
