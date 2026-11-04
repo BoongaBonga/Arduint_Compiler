@@ -12,7 +12,16 @@ typedef enum {
   OP_NO_OP,
   OP_CONSTANT_8,
   OP_CONSTANT_16,
+  OP_DEFINE_GLOBAL_8,
+  OP_DEFINE_GLOBAL_16,
+  OP_GET_GLOBAL_8,
+  OP_GET_GLOBAL_16,
+  OP_SET_GLOBAL_8,
+  OP_SET_GLOBAL_16,
+  OP_PRINT,
   OP_ASSIGN,
+
+  OP_POP,
 
   OP_ADD,
   OP_SUBTRACT,
@@ -35,14 +44,6 @@ typedef enum {
   OP_AND_AND,
   OP_OR_OR,
 
-  OP_MINUS_EQUALS,
-  OP_PLUS_EQUALS,
-  OP_DIVIDE_EQUALS,
-  OP_MODULO_EQUALS,
-  OP_MULTIPLY_EQUALS,
-  OP_POWER_EQUALS,
-  OP_AND_EQUALS,
-  OP_OR_EQUALS,
   OP_POST_DECREMENT,
   OP_POST_INCREMENT,
   OP_PRE_DECREMENT,
@@ -66,8 +67,9 @@ static inline uint8_t getOperation(Chunk *chunk, int index) {
   return *(uint8_t *)vecGet(&chunk->byteCode, index);
 }
 
-static inline void writeConstant(Chunk *chunk, Value constant) {
+static inline uint16_t writeConstant(Chunk *chunk, Value constant) {
   vecPush(&chunk->constants, &constant);
+  return chunk->constants.count - 1;
 }
 
 static inline Value *getConstant(Chunk *chunk, int index) {

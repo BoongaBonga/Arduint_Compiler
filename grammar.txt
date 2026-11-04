@@ -1,13 +1,21 @@
-Statement = 
-  | FunctionDeclaration
-  | DefineStatement
+Declaration:
+  FunctionDeclaration
+  | Statement
+
+Statement:
+//| DefineStatement
+
   | loopStatement
+  | forStatement
+  | whileStatement
+
   | ifStatement
+  | returnStatement
+
   | PrintStatement
 
-BlockStatement =
-    '{' + Statement + '}'
-  | FunctionDeclaration + BlockStatement
+  | Expression
+  | block
 
 --------------------------------------------------------
 

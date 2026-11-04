@@ -2,12 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cmdLineFlags.h"
 #include "collection.h"
 #include "debug.h"
 #include "errorHandling.h"
-#include "lexer.h"
 #include "object.h"
 #include "parser.h"
+#include "scanner.h"
 
 static char *readFile(const char *path) {
   FILE *filePtr = fopen(path, "rb");
@@ -44,33 +45,62 @@ static char *readFile(const char *path) {
   return sourceBuf;
 }
 
+static void setCmdFlags(int argc, char *argv[]) {
+  for (int i = 1; i < argc; i++) {
+    if (argv[i][0] == '-') {
+      // Detect errors
+      if (strlen(argv[i]) == 3) {
+        // Determine flag
+        if (argv[i][1] == 'd') {
+          switch (argv[i][2]) {
+          case 's': cmdFlags.debugScanner = true; continue;
+          case 'p': cmdFlags.debugParser = true; continue;
+          default:  break;
+          }
+        }
+      }
+
+      // Unknown flag
+      defaultError("Unknown flag '%s'", argv[i]);
+      exit(2);
+    } else {
+      // Set path
+      cmdFlags.path = argv[i];
+    }
+  }
+}
+
 int main(int argc, char *argv[]) {
-  // Expect one argument, source.ardi
+  // Expect at least one argument, source.ardi and at most source, -ds and -dp
   if (argc < 2) {
     defaultError("Too little arguments. Please include [source].ardi.");
     return -1;
-  } else if (argc > 2) {
+  } else if (argc > 4) {
     defaultError("Too many arguments. Please enter only [source].ardi.");
     return -1;
   }
 
+  // Set flags
+  initCmdFlags();
+  setCmdFlags(argc, argv);
+
   // Then, we open the file and then start lexing
-  char *source = readFile(argv[1]);
+  char *source = readFile(cmdFlags.path);
 
   // Start lexing the file
-  Scanner lexer = initScanner(source);
-  scanTokens(&lexer);
+  Scanner scanner = initScanner(source);
+  scanTokens(&scanner);
 
-  printTokens(&lexer.tokens);
+  // Print the tokens in case the -ds flag is on
+  if (cmdFlags.debugScanner) printTokens(&scanner.tokens);
 
-  Parser parser = initParser(&lexer.tokens);
-
+  Parser parser = initParser(&scanner.tokens);
   parse(&parser);
 
-  printChunk(&parser.chunk, "Program");
+  if (cmdFlags.debugParser) printChunk(&parser.chunk, "Program");
 
   // Close down
   free(source);
-  freeScanner(&lexer);
+  freeScanner(&scanner);
   freeParser(&parser);
 }

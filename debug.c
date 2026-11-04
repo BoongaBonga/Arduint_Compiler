@@ -8,7 +8,7 @@
 #include "chunk.h"
 #include "collection.h"
 #include "errorHandling.h"
-#include "lexer.h"
+#include "scanner.h"
 #include "token.h"
 
 const char *lexemes[70] = {
@@ -63,7 +63,6 @@ const char *lexemes[70] = {
     "POINT_COMMA",
     "COLON",
     "DOT",
-    "EQUALS",
     "PERCENT",
     "LEFT_SQUARE_BRACKET",
     "RIGHT_SQUARE_BRACKET",
@@ -79,6 +78,8 @@ const char *lexemes[70] = {
     "GREATER_EQUALS",
     "LESS_EQUALS",
     "NOT_EQUALS",
+
+    "EQUALS",
     "MINUS_EQUALS",
     "PLUS_EQUALS",
     "SLASH_EQUALS",
@@ -189,7 +190,21 @@ static int printInstruction(Chunk *chunk, int offset) {
     return constantInstruction("OP_CONSTANT_8", false, chunk, offset);
   case OP_CONSTANT_16:
     return constantInstruction("OP_CONSTANT_16", true, chunk, offset);
+  case OP_DEFINE_GLOBAL_8:
+    return constantInstruction("OP_DEFINE_GLOBAL_8", false, chunk, offset);
+  case OP_DEFINE_GLOBAL_16:
+    return constantInstruction("OP_DEFINE_GLOBAL_16", true, chunk, offset);
+  case OP_GET_GLOBAL_8:
+    return constantInstruction("OP_GET_GLOBAL_8", false, chunk, offset);
+  case OP_GET_GLOBAL_16:
+    return constantInstruction("OP_GET_GLOBAL_16", true, chunk, offset);
+  case OP_SET_GLOBAL_8:
+    return constantInstruction("OP_SET_GLOBAL_8", false, chunk, offset);
+  case OP_SET_GLOBAL_16:
+    return constantInstruction("OP_SET_GLOBAL_16", true, chunk, offset);
+  case OP_PRINT:      return simpleInstruction("OP_PRINT", offset);
   case OP_ASSIGN:     return simpleInstruction("OP_ASSIGN", offset);
+  case OP_POP:        return simpleInstruction("OP_POP", offset);
   case OP_ADD:        return simpleInstruction("OP_ADD", offset);
   case OP_SUBTRACT:   return simpleInstruction("OP_SUBTRACT", offset);
   case OP_MULTIPLY:   return simpleInstruction("OP_MULTIPLY", offset);
@@ -207,20 +222,11 @@ static int printInstruction(Chunk *chunk, int offset) {
   case OP_GREATER:    return simpleInstruction("OP_GREATER", offset);
   case OP_GREATER_OR_EQUAL:
     return simpleInstruction("OP_GREATER_OR_EQUAL", offset);
-  case OP_LESS:          return simpleInstruction("OP_LESS", offset);
-  case OP_LESS_OR_EQUAL: return simpleInstruction("OP_LESS_OR_EQUAL", offset);
-  case OP_AND_AND:       return simpleInstruction("OP_AND_AND", offset);
-  case OP_OR_OR:         return simpleInstruction("OP_OR_OR", offset);
+  case OP_LESS:           return simpleInstruction("OP_LESS", offset);
+  case OP_LESS_OR_EQUAL:  return simpleInstruction("OP_LESS_OR_EQUAL", offset);
+  case OP_AND_AND:        return simpleInstruction("OP_AND_AND", offset);
+  case OP_OR_OR:          return simpleInstruction("OP_OR_OR", offset);
 
-  case OP_MINUS_EQUALS:  return simpleInstruction("OP_MINUS_EQUALS", offset);
-  case OP_PLUS_EQUALS:   return simpleInstruction("OP_PLUS_EQUALS", offset);
-  case OP_DIVIDE_EQUALS: return simpleInstruction("OP_DIVIDE_EQUALS", offset);
-  case OP_MODULO_EQUALS: return simpleInstruction("OP_MODULO_EQUALS", offset);
-  case OP_MULTIPLY_EQUALS:
-    return simpleInstruction("OP_MULTIPLY_EQUALS", offset);
-  case OP_POWER_EQUALS:   return simpleInstruction("OP_POWER_EQUALS", offset);
-  case OP_AND_EQUALS:     return simpleInstruction("OP_AND_EQUALS", offset);
-  case OP_OR_EQUALS:      return simpleInstruction("OP_OR_EQUALS", offset);
   case OP_POST_DECREMENT: return simpleInstruction("OP_POST_DECREMENT", offset);
   case OP_POST_INCREMENT: return simpleInstruction("OP_POST_INCREMENT", offset);
   case OP_PRE_DECREMENT:  return simpleInstruction("OP_PRE_DECREMENT", offset);

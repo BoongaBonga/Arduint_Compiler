@@ -1,5 +1,5 @@
-#ifndef ARDUINT_LEXER_H
-#define ARDUINT_LEXER_H
+#ifndef ARDUINT_SCANNER_H
+#define ARDUINT_SCANNER_H
 
 #include "collection.h"
 #include "token.h"
@@ -17,10 +17,10 @@ char *copySourceStr(const char *start, int length);
 
 Scanner initScanner(const char *source);
 
-void freeScanner(Scanner *lexer);
+void freeScanner(Scanner *scanner);
 
-Token scanToken(Scanner *lexer);
+Token scanToken(Scanner *scanner);
 
-void scanTokens(Scanner *lexer);
+void scanTokens(Scanner *scanner);
 
 #endif
