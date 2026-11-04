@@ -222,15 +222,10 @@ static int printInstruction(Chunk *chunk, int offset) {
   case OP_GREATER:    return simpleInstruction("OP_GREATER", offset);
   case OP_GREATER_OR_EQUAL:
     return simpleInstruction("OP_GREATER_OR_EQUAL", offset);
-  case OP_LESS:           return simpleInstruction("OP_LESS", offset);
-  case OP_LESS_OR_EQUAL:  return simpleInstruction("OP_LESS_OR_EQUAL", offset);
-  case OP_AND_AND:        return simpleInstruction("OP_AND_AND", offset);
-  case OP_OR_OR:          return simpleInstruction("OP_OR_OR", offset);
-
-  case OP_POST_DECREMENT: return simpleInstruction("OP_POST_DECREMENT", offset);
-  case OP_POST_INCREMENT: return simpleInstruction("OP_POST_INCREMENT", offset);
-  case OP_PRE_DECREMENT:  return simpleInstruction("OP_PRE_DECREMENT", offset);
-  case OP_PRE_INCREMENT:  return simpleInstruction("OP_PRE_INCREMENT", offset);
+  case OP_LESS:          return simpleInstruction("OP_LESS", offset);
+  case OP_LESS_OR_EQUAL: return simpleInstruction("OP_LESS_OR_EQUAL", offset);
+  case OP_AND_AND:       return simpleInstruction("OP_AND_AND", offset);
+  case OP_OR_OR:         return simpleInstruction("OP_OR_OR", offset);
   default: defaultError("Unknown opCode %d.", instruction); return offset + 1;
   }
 }

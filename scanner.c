@@ -310,14 +310,12 @@ Token scanToken(Scanner *scanner) {
   case '+':  {
     switch (peek(scanner)) {
     case '=': RET_DOUBLE_TOKEN(TOKEN_PLUS_EQUALS);
-    case '+': RET_DOUBLE_TOKEN(TOKEN_PLUS_PLUS);
     default:  return makeToken(scanner, TOKEN_PLUS);
     }
   }
   case '-': {
     switch (peek(scanner)) {
     case '=': RET_DOUBLE_TOKEN(TOKEN_MINUS_EQUALS);
-    case '-': RET_DOUBLE_TOKEN(TOKEN_MINUS_MINUS);
     default:  return makeToken(scanner, TOKEN_MINUS);
     }
   }

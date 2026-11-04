@@ -188,8 +188,6 @@ const OpCode tokenOps[69][3] = {
     [TOKEN_OR_EQUALS] = {OP_ERROR, OP_OR, OP_ERROR},
     [TOKEN_PERCENT_EQUALS] = {OP_ERROR, OP_MODULO, OP_ERROR},
 
-    [TOKEN_PLUS_PLUS] = {OP_PRE_INCREMENT, OP_ERROR, OP_POST_INCREMENT},
-    [TOKEN_MINUS_MINUS] = {OP_PRE_DECREMENT, OP_ERROR, OP_POST_DECREMENT},
     [TOKEN_AND_AND] = {OP_ERROR, OP_AND_AND, OP_ERROR},
     [TOKEN_OR_OR] = {OP_ERROR, OP_OR_OR, OP_ERROR},
 };
@@ -333,8 +331,6 @@ static int infixBindingPower(TokenType op, ReturnSide retRhs) {
 
 static int prefixBindingPower(TokenType op) {
   switch (op) {
-  case TOKEN_PLUS_PLUS:
-  case TOKEN_MINUS_MINUS:
   case TOKEN_MINUS:
   case TOKEN_NOT:
   case TOKEN_PLUS:               return PREC_UNARY * 2;
@@ -364,6 +360,9 @@ static int prefix(Parser *parser, Token *current, int minBp) {
 
   // Prefix
   case TOKEN_PLUS: {
+    warningFromToken(
+        current, "Putting a '+' in front of a value is unneccesary and will be "
+                 "ignored. '++a' is not implemented in this language.");
     int rightBindingPower = prefixBindingPower(current->type);
     expressionBp(parser, rightBindingPower);
     return 0;

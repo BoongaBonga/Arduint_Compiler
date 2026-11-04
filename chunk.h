@@ -43,11 +43,6 @@ typedef enum {
   OP_LESS_OR_EQUAL,
   OP_AND_AND,
   OP_OR_OR,
-
-  OP_POST_DECREMENT,
-  OP_POST_INCREMENT,
-  OP_PRE_DECREMENT,
-  OP_PRE_INCREMENT,
 } OpCode;
 
 /// @brief Bytecode chunk of uint8_t's
