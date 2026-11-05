@@ -89,8 +89,6 @@ const char *lexemes[70] = {
     "OR_EQUALS",
     "PERCENT_EQUALS",
 
-    "PLUS_PLUS",
-    "MINUS_MINUS",
     "AND_AND",
     "OR_OR",
 

@@ -114,8 +114,7 @@ static Token makeToken(Scanner *scanner, TokenType type) {
   token.start = scanner->start;
   token.length = (int)(scanner->current - scanner->start);
   token.line = scanner->line;
-  token.offset = scanner->current - scanner->lineStart;
-
+  token.offset = scanner->start - scanner->lineStart;
   return token;
 }
 
@@ -309,6 +308,12 @@ Token scanToken(Scanner *scanner) {
   case '\\': return makeToken(scanner, TOKEN_BACKSLASH);
   case '+':  {
     switch (peek(scanner)) {
+    case '+': {
+      advance(scanner);
+      errorToken(scanner, "'++' is not a valid operation.", scanner->line,
+                 scanner->lineStart, scanner->current - 2);
+      break;
+    }
     case '=': RET_DOUBLE_TOKEN(TOKEN_PLUS_EQUALS);
     default:  return makeToken(scanner, TOKEN_PLUS);
     }

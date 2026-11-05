@@ -302,30 +302,31 @@ static int infixBindingPower(TokenType op, ReturnSide retRhs) {
   case TOKEN_LESS:
   case TOKEN_LESS_EQUALS:
   case TOKEN_EQUALS_EQUALS:
-  case TOKEN_NOT_EQUALS:     return PREC_COMPARISON * 2 + retRhs;
-
-  case TOKEN_EQUALS:
-  case TOKEN_PLUS_EQUALS:
-  case TOKEN_OR_EQUALS:
-  case TOKEN_AND_EQUALS:
-  case TOKEN_STAR_EQUALS:
-  case TOKEN_MINUS_EQUALS:
-  case TOKEN_POWER_EQUALS:
-  case TOKEN_SLASH_EQUALS:
-  case TOKEN_PERCENT_EQUALS: return PREC_ASSIGN * 2 + !retRhs;
-
-  case TOKEN_OR:             return PREC_B_OR * 2 + retRhs;
-  case TOKEN_XOR:            return PREC_B_XOR * 2 + retRhs;
-  case TOKEN_AND:            return PREC_B_AND * 2 + retRhs;
+  case TOKEN_NOT_EQUALS:
+    return PREC_COMPARISON * 2 + retRhs;
+    /*
+      case TOKEN_EQUALS:
+      case TOKEN_PLUS_EQUALS:
+      case TOKEN_OR_EQUALS:
+      case TOKEN_AND_EQUALS:
+      case TOKEN_STAR_EQUALS:
+      case TOKEN_MINUS_EQUALS:
+      case TOKEN_POWER_EQUALS:
+      case TOKEN_SLASH_EQUALS:
+      case TOKEN_PERCENT_EQUALS: return PREC_ASSIGN * 2 + !retRhs;
+    */
+  case TOKEN_OR:      return PREC_B_OR * 2 + retRhs;
+  case TOKEN_XOR:     return PREC_B_XOR * 2 + retRhs;
+  case TOKEN_AND:     return PREC_B_AND * 2 + retRhs;
 
   case TOKEN_PLUS:
-  case TOKEN_MINUS:          return PREC_SUM * 2 + retRhs;
+  case TOKEN_MINUS:   return PREC_SUM * 2 + retRhs;
   case TOKEN_STAR:
   case TOKEN_PERCENT:
-  case TOKEN_SLASH:          return PREC_FACTOR * 2 + retRhs;
-  case TOKEN_POWER:          return PREC_POWER * 2 + !retRhs;
+  case TOKEN_SLASH:   return PREC_FACTOR * 2 + retRhs;
+  case TOKEN_POWER:   return PREC_POWER * 2 + !retRhs;
 
-  default:                   return -1;
+  default:            return -1;
   }
 }
 
@@ -362,7 +363,7 @@ static int prefix(Parser *parser, Token *current, int minBp) {
   case TOKEN_PLUS: {
     warningFromToken(
         current, "Putting a '+' in front of a value is unneccesary and will be "
-                 "ignored. '++a' is not implemented in this language.");
+                 "ignored.");
     int rightBindingPower = prefixBindingPower(current->type);
     expressionBp(parser, rightBindingPower);
     return 0;
