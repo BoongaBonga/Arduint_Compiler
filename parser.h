@@ -13,6 +13,7 @@ typedef struct {
   Chunk chunk;
   bool hadError;
   Table stringPool;
+  Table globalStrings;
 } Parser;
 
 Parser initParser(Vector *tokens);

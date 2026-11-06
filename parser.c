@@ -53,12 +53,14 @@ Parser initParser(Vector *tokens) {
   parser.chunk = initChunk();
   parser.hadError = false;
   parser.stringPool = initTable();
+  parser.globalStrings = initTable();
   return parser;
 }
 
 void freeParser(Parser *parser) {
   freeChunk(&parser->chunk);
   freeTable(&parser->stringPool);
+  freeTable(&parser->globalStrings);
 }
 
 static Token *peek(Parser *parser) {
@@ -197,9 +199,22 @@ static uint8_t getOp(TokenType type, Position pos) {
 }
 
 static uint16_t identifierConstant(Parser *parser, Token *name) {
-  return writeConstant(&parser->chunk,
-                       OBJECT_VAL(copyStringVal(name->start, name->length,
-                                                &parser->stringPool)));
+  // Check whether name is already in globals
+  ObjString *identifierName =
+      copyStringVal(name->start, name->length, &parser->stringPool);
+
+  Value value;
+  bool containsName = tableGet(&parser->globalStrings, identifierName, &value);
+  // if it is in glboals, return that index
+  if (containsName) return (uint16_t)value.as.number;
+
+  // otherwise make one
+  uint16_t index = writeConstant(&parser->chunk, OBJECT_VAL(identifierName));
+
+  value.type = VAL_NUMBER;
+  value.as.number = (double)index;
+  tableSet(&parser->globalStrings, identifierName, value);
+  return index;
 }
 
 static uint16_t parseVariable(Parser *parser, const char *errorMessage) {
