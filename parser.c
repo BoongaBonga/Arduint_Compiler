@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "chunk.h"
 #include "collection.h"
@@ -46,6 +47,13 @@ typedef struct {
 
 extern const char *lexemes;
 
+static void initCompiler(Parser *parser) {
+  Compiler compiler;
+  compiler.localCount = 0;
+  compiler.scopeDepth = 0;
+  parser->compiler = compiler;
+}
+
 Parser initParser(Vector *tokens) {
   Parser parser;
   parser.currentIndex = 0;
@@ -54,6 +62,7 @@ Parser initParser(Vector *tokens) {
   parser.hadError = false;
   parser.stringPool = initTable();
   parser.globalStrings = initTable();
+  initCompiler(&parser);
   return parser;
 }
 
@@ -198,6 +207,34 @@ static uint8_t getOp(TokenType type, Position pos) {
   return tokenOps[type][pos];
 }
 
+static void beginScope(Parser *parser) { parser->compiler.scopeDepth++; }
+static void endScope(Parser *parser) {
+  parser->compiler.scopeDepth--;
+
+  while (parser->compiler.localCount > 0 &&
+         parser->compiler.locals[parser->compiler.localCount - 1].depth >
+             parser->compiler.scopeDepth) {
+    emitOp(parser, OP_POP);
+    parser->compiler.localCount--;
+  }
+}
+
+static bool identifiersEqual(Token *a, Token *b) {
+  if (a->length != b->length) return false;
+  return memcmp(a->start, b->start, a->length) == 0;
+}
+
+static int resolveLocal(Compiler *compiler, Token *name) {
+  for (int i = compiler->localCount - 1; i >= 0; i--) {
+    Local *local = &compiler->locals[i];
+    if (identifiersEqual(name, &local->name)) {
+      return i;
+    }
+  }
+
+  return -1;
+}
+
 static uint16_t identifierConstant(Parser *parser, Token *name) {
   // Check whether name is already in globals
   ObjString *identifierName =
@@ -217,32 +254,84 @@ static uint16_t identifierConstant(Parser *parser, Token *name) {
   return index;
 }
 
-static uint16_t parseVariable(Parser *parser, const char *errorMessage) {
-  consume(parser, TOKEN_IDENTIFIER, peek(parser), errorMessage);
+static void addLocal(Parser *parser, Token name) {
+  if (parser->compiler.localCount == UINT8_COUNT) {
+    errorFromToken(previous(parser), "Too many local variables in one block.");
+    return;
+  }
+
+  Local *local = &parser->compiler.locals[parser->compiler.localCount++];
+  local->name = name;
+  local->depth = parser->compiler.scopeDepth;
+}
+
+static void declareVariable(Parser *parser) {
+  if (parser->compiler.scopeDepth == 0) return;
+
+  Token *name = previous(parser);
+
+  for (int i = parser->compiler.localCount - 1; i >= 0; i--) {
+    Local *local = &parser->compiler.locals[i];
+    if (local->depth != -1 && local->depth < parser->compiler.scopeDepth) {
+      break;
+    }
+
+    if (identifiersEqual(name, &local->name)) {
+      errorFromToken(name, "Already a variable with this name in this scope.");
+    }
+  }
+
+  addLocal(parser, *name);
+}
+
+static uint16_t parseVariable(Parser *parser) {
+  // consume(parser, TOKEN_IDENTIFIER, peek(parser), errorMessage);
+
+  declareVariable(parser);
+  if (parser->compiler.scopeDepth > 0)
+    return (uint16_t)(parser->compiler.localCount - 1);
   return identifierConstant(parser, previous(parser));
 }
 
 static void defineVariable(Parser *parser, uint16_t global) {
-  emit8or16bytes(parser, global, OP_DEFINE_GLOBAL_8, OP_DEFINE_GLOBAL_16);
+  if (parser->compiler.scopeDepth > 0) return;
+
+  emitOp(parser, OP_DEFINE_GLOBAL);
 }
 
 static void namedVariable(Parser *parser, Token *name, bool canAssign) {
-  uint16_t arg = identifierConstant(parser, name);
+  uint16_t getOperation, setOperation;
+  int arg = resolveLocal(&parser->compiler, name);
+
+  if (arg != -1) {
+    getOperation = OP_GET_LOCAL;
+    setOperation = OP_SET_LOCAL;
+  } else if (parser->compiler.scopeDepth > 0) {
+    getOperation = OP_ERROR;
+    if (peek(parser)->type != TOKEN_EQUALS)
+      errorFromToken(name, "Cannot read from an undeclared variable.");
+    setOperation = OP_SET_LOCAL;
+    arg = parseVariable(parser);
+  } else {
+    arg = identifierConstant(parser, name);
+    getOperation = OP_GET_GLOBAL;
+    setOperation = OP_SET_GLOBAL;
+  }
 
   if (canAssign && match(parser, TOKEN_EQUALS)) {
     expression(parser);
-    emit8or16bytes(parser, arg, OP_SET_GLOBAL_8, OP_SET_GLOBAL_16);
+    emitOps(parser, setOperation, (uint8_t)arg);
   } else if (canAssign && isAssignmentToken(peek(parser))) {
     TokenType op = next(parser)->type;
 
     expression(parser);
 
     // Get global -> add expr -> set global
-    emit8or16bytes(parser, arg, OP_GET_GLOBAL_8, OP_GET_GLOBAL_16);
+    emitOps(parser, getOperation, (uint8_t)arg);
     emitOp(parser, getOp(op, INFIX));
-    emit8or16bytes(parser, arg, OP_SET_GLOBAL_8, OP_SET_GLOBAL_16);
+    emitOps(parser, setOperation, (uint8_t)arg);
   } else {
-    emit8or16bytes(parser, arg, OP_GET_GLOBAL_8, OP_GET_GLOBAL_16);
+    emitOps(parser, getOperation, (uint8_t)arg);
   }
 }
 
@@ -448,6 +537,23 @@ static void expressionBp(Parser *parser, int minBp) {
 
 static void expression(Parser *parser) { expressionBp(parser, 0); }
 
+//____________________________________________
+//                STATEMENTS
+//____________________________________________
+
+static void block(Parser *parser) {
+  consume(parser, TOKEN_LEFT_SQUIGGLY_BRACKET, peek(parser),
+          "Cannot start a block without a '{'.");
+
+  while (!check(parser, TOKEN_RIGHT_SQUIGGLY_BRACKET) &&
+         !check(parser, TOKEN_EOF)) {
+    declaration(parser);
+  }
+
+  consume(parser, TOKEN_RIGHT_SQUIGGLY_BRACKET, peek(parser),
+          "Excpect '}' after a block.");
+}
+
 static void printStatement(Parser *parser) {
   // Consume 'print'
   consume(parser, TOKEN_PRINT, peek(parser),
@@ -492,7 +598,13 @@ static void statement(Parser *parser) {
   Token *current = peek(parser);
 
   switch (current->type) {
-  case TOKEN_PRINT: printStatement(parser); break;
+  case TOKEN_PRINT:                 printStatement(parser); break;
+  case TOKEN_LEFT_SQUIGGLY_BRACKET: {
+    beginScope(parser);
+    block(parser);
+    endScope(parser);
+    break;
+  }
   case TOKEN_POINT_COMMA:
     // Report error, logic underneath will deal with cleanup
     errorFromToken(current, "Expected statement, but got ';'.");
@@ -502,8 +614,10 @@ static void statement(Parser *parser) {
 }
 
 static void declaration(Parser *parser) {
+  skipWhiteSpace(parser);
   statement(parser);
   if (parser->hadError) synchronize(parser);
+  skipWhiteSpace(parser);
 }
 
 static void program(Parser *parser) {
@@ -512,7 +626,6 @@ static void program(Parser *parser) {
     errorFromToken(peek(parser), "Expected statement, but got ';'.");
 
   while (peek(parser)->type != TOKEN_EOF) {
-    skipWhiteSpace(parser);
     if (peek(parser)->type == TOKEN_EOF) break;
     declaration(parser);
   }

@@ -8,6 +8,7 @@
 #include "chunk.h"
 #include "collection.h"
 #include "errorHandling.h"
+#include "parser.h"
 #include "scanner.h"
 #include "token.h"
 
@@ -175,6 +176,12 @@ static int constantInstruction(const char *name, bool is16b, Chunk *chunk,
   return offset + 2 + is16b;
 }
 
+static int byteInstruction(const char *name, Chunk *chunk, int offset) {
+  uint8_t slot = *(uint8_t *)vecGet(&chunk->byteCode, offset + 1);
+  printf("%-16s %4d\n", name, slot);
+  return offset + 2;
+}
+
 static int printInstruction(Chunk *chunk, int offset) {
   printf("%04d ", offset);
 
@@ -188,18 +195,14 @@ static int printInstruction(Chunk *chunk, int offset) {
     return constantInstruction("OP_CONSTANT_8", false, chunk, offset);
   case OP_CONSTANT_16:
     return constantInstruction("OP_CONSTANT_16", true, chunk, offset);
-  case OP_DEFINE_GLOBAL_8:
-    return constantInstruction("OP_DEFINE_GLOBAL_8", false, chunk, offset);
-  case OP_DEFINE_GLOBAL_16:
-    return constantInstruction("OP_DEFINE_GLOBAL_16", true, chunk, offset);
-  case OP_GET_GLOBAL_8:
-    return constantInstruction("OP_GET_GLOBAL_8", false, chunk, offset);
-  case OP_GET_GLOBAL_16:
-    return constantInstruction("OP_GET_GLOBAL_16", true, chunk, offset);
-  case OP_SET_GLOBAL_8:
-    return constantInstruction("OP_SET_GLOBAL_8", false, chunk, offset);
-  case OP_SET_GLOBAL_16:
-    return constantInstruction("OP_SET_GLOBAL_16", true, chunk, offset);
+  case OP_DEFINE_GLOBAL:
+    return constantInstruction("OP_DEFINE_GLOBAL", false, chunk, offset);
+  case OP_GET_GLOBAL:
+    return constantInstruction("OP_GET_GLOBAL", false, chunk, offset);
+  case OP_SET_GLOBAL:
+    return constantInstruction("OP_SET_GLOBAL", false, chunk, offset);
+  case OP_GET_LOCAL:  return byteInstruction("OP_GET_LOCAL", chunk, offset);
+  case OP_SET_LOCAL:  return byteInstruction("OP_SET_LOCAL", chunk, offset);
   case OP_PRINT:      return simpleInstruction("OP_PRINT", offset);
   case OP_ASSIGN:     return simpleInstruction("OP_ASSIGN", offset);
   case OP_POP:        return simpleInstruction("OP_POP", offset);
