@@ -207,4 +207,168 @@ ObjString *tableFindString(Table *table, const char *chars, int length,
   }
 }
 
+//_______________________GENERIC TABLES____________________
+
+GenericTable initGenericTable(size_t elementSize) {
+  GenericTable table;
+  table.count = 0;
+  table.capacity = 0;
+  table.elementSize = elementSize;
+  table.values = NULL;
+  table.entries = NULL;
+  return table;
+}
+
+void freeGenericTable(GenericTable *table) {
+  reallocate(table->entries, sizeof(GenericEntry) * table->capacity, 0);
+  table->count = 0;
+  table->capacity = 0;
+  table->entries = NULL;
+  free(table->values);
+  table->values = NULL;
+}
+
+static GenericEntry *findGenericEntry(GenericEntry *entries, int capacity,
+                                      ObjString *key) {
+  uint32_t index = key->hash % capacity;
+  GenericEntry *tombstone = NULL;
+
+  for (;;) {
+    GenericEntry *entry = &entries[index];
+    if (entry->key == NULL) {
+      if (entry->value == NULL) {
+        // Empty entry
+        return tombstone != NULL ? tombstone : entry;
+      } else {
+        // We found a tombstone
+        if (tombstone == NULL) tombstone = entry;
+      }
+    } else if (entry->key == key) {
+      // We found the key
+      return entry;
+    }
+
+    index = (index + 1) % capacity;
+  }
+}
+
+static void genericAdjustCapacity(GenericTable *table, int capacity) {
+  // Adjust values array
+  void *oldValues = table->values;
+  void *values = malloc(capacity * table->elementSize);
+
+  GenericEntry *entries = ALLOCATE(GenericEntry, capacity);
+
+  if (entries == NULL || values == NULL) {
+    defaultError("Failed to allocate table.");
+    exit(74);
+  }
+
+  memset(values, 0, table->elementSize * capacity);
+
+  for (int i = 0; i < capacity; i++) {
+    entries[i].key = NULL;
+    entries[i].value = NULL;
+  }
+
+  GenericEntry *oldEntries = table->entries;
+  int oldCapacity = table->capacity;
+  table->count = 0;
+  for (int i = 0; i < oldCapacity; i++) {
+    GenericEntry *entry = &oldEntries[i];
+    if (entry->key == NULL) continue;
+
+    GenericEntry *dest = findGenericEntry(entries, capacity, entry->key);
+    dest->key = entry->key;
+
+    // copy over the value from the old value array
+    int newIndex = (int)(dest - entries);
+    void *newValue = (char *)values + (size_t)newIndex * table->elementSize;
+    void *oldValue = (char *)oldValues + (size_t)i * table->elementSize;
+
+    memcpy(newValue, oldValue, table->elementSize);
+    // And then set the new entry's value to a reference to that new value
+    dest->value = newValue;
+    table->count++;
+  }
+
+  FREE_ARRAY(GenericEntry, oldEntries, oldCapacity);
+  table->entries = entries;
+  table->capacity = capacity;
+
+  free(table->values);
+  table->values = values;
+}
+
+bool genericTableGet(GenericTable *table, ObjString *key, void *value) {
+  if (table->count == 0) return false;
+
+  GenericEntry *entry = findGenericEntry(table->entries, table->capacity, key);
+  if (entry->key == NULL) return false;
+
+  memcpy(value, entry->value, table->elementSize);
+  return true;
+}
+
+bool genericTableSet(GenericTable *table, ObjString *key, void *value) {
+  if (table->count + 1 > table->capacity * TABLE_MAX_LOAD) {
+    int capacity = table->capacity < 8 ? 8 : table->capacity * 2;
+    genericAdjustCapacity(table, capacity);
+  }
+
+  GenericEntry *entry = findGenericEntry(table->entries, table->capacity, key);
+  bool isNewKey = entry->key == NULL;
+  if (isNewKey && entry->value == NULL) table->count++;
+
+  entry->key = key;
+
+  if (entry->value == NULL) {
+    entry->value =
+        (char *)table->values + (entry - table->entries) * table->elementSize;
+  }
+
+  memcpy(entry->value, value, table->elementSize);
+  return isNewKey;
+}
+
+bool genericTableDelete(GenericTable *table, ObjString *key) {
+  if (table->count == 0) return false;
+
+  // Find the entry
+  GenericEntry *entry = findGenericEntry(table->entries, table->capacity, key);
+  if (entry->key == NULL) return false;
+
+  entry->key = NULL;
+  return true;
+}
+
+void genericTableAddAll(GenericTable *from, GenericTable *to) {
+  for (int i = 0; i < from->capacity; i++) {
+    GenericEntry *entry = &from->entries[i];
+    if (entry->key != NULL) {
+      genericTableSet(to, entry->key, entry->value);
+    }
+  }
+}
+
+ObjString *genericTableFindString(GenericTable *table, const char *chars,
+                                  int length, uint32_t hash) {
+  if (table->count == 0) return NULL;
+
+  uint32_t index = hash % table->capacity;
+  for (;;) {
+    GenericEntry *entry = &table->entries[index];
+    if (entry->key == NULL) {
+      // Stop if we find an empty non-tombstone entry.
+      if (entry->value == NULL) return NULL;
+    } else if (entry->key->length == length && entry->key->hash == hash &&
+               memcmp(entry->key->chars, chars, length) == 0) {
+      // We found it
+      return entry->key;
+    }
+
+    index = (index + 1) % table->capacity;
+  }
+}
+
 #endif

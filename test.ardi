@@ -1,9 +1,4 @@
-{
-  a = "outer";
-  {
-    a = a;
-  }
-  {
-    b = a;
-  }
-}
+define A as B
+define B as A
+
+print (B);

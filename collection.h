@@ -9,6 +9,7 @@
 #include "value.h"
 
 typedef struct Table Table;
+typedef struct GenericTable GenericTable;
 
 typedef struct {
   size_t elementSize;
@@ -46,5 +47,27 @@ bool tableDelete(Table *table, ObjString *key);
 void tableAddAll(Table *from, Table *to);
 ObjString *tableFindString(Table *table, const char *chars, int length,
                            uint32_t hash);
+
+typedef struct {
+  ObjString *key;
+  void *value; // Value is 1 if it's a tombstone
+} GenericEntry;
+
+struct GenericTable {
+  int count;
+  int capacity;
+  size_t elementSize;
+  void *values;
+  GenericEntry *entries;
+};
+
+GenericTable initGenericTable(size_t elementSize);
+void freeGenericTable(GenericTable *table);
+bool genericTableGet(GenericTable *table, ObjString *key, void *value);
+bool genericTableSet(GenericTable *table, ObjString *key, void *value);
+bool genericTableDelete(GenericTable *table, ObjString *key);
+void genericTableAddAll(GenericTable *from, GenericTable *to);
+ObjString *genericTableFindString(GenericTable *table, const char *chars,
+                                  int length, uint32_t hash);
 
 #endif

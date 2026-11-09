@@ -11,6 +11,8 @@
 #include "errorHandling.h"
 #include "scanner.h"
 
+static void defineStatement(Scanner *scanner);
+
 static bool isAlphabetic(char c) {
   return (c == '_') || ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z');
 }
@@ -24,10 +26,20 @@ Scanner initScanner(const char *source) {
   scanner.line = 1;
   scanner.lineStart = source;
   scanner.tokens = initVector(sizeof(Token));
+  scanner.definitions = initGenericTable(sizeof(Vector));
+  scanner.stringPool = initTable();
   return scanner;
 }
 
-void freeScanner(Scanner *scanner) { freeVector(&scanner->tokens); }
+void freeScanner(Scanner *scanner) {
+  for (int i = 0; i < scanner->definitions.capacity; i++) {
+    GenericEntry *entry = &scanner->definitions.entries[i];
+    if (entry->key != NULL) freeVector(entry->value);
+  }
+  freeGenericTable(&scanner->definitions);
+  freeTable(&scanner->stringPool);
+  freeVector(&scanner->tokens);
+}
 
 static bool isAtEnd(Scanner *scanner) { return *scanner->current == '\0'; }
 /// @brief returns true if we're one char away from EOF
@@ -169,7 +181,14 @@ static TokenType identifierType(Scanner *scanner) {
   case 'D':
   case 'd': {
     switch (identifierLen) {
-    case 6: return checkKeyword(scanner, 1, 5, "efine", TOKEN_DEFINE);
+    case 6: {
+      TokenType type = checkKeyword(scanner, 1, 5, "efine", TOKEN_DEFINE);
+      if (type != TOKEN_DEFINE) return type;
+      // Continue scanning the rest of the line
+      defineStatement(scanner);
+      skipWhiteSpace(scanner);
+      return TOKEN_NEWLINE;
+    }
     case 11:
       return checkKeyword(scanner, 1, 10, "elayMicros", TOKEN_DELAY_MICROS);
     default: return checkKeyword(scanner, 1, 4, "elay", TOKEN_DELAY);
@@ -242,6 +261,7 @@ static TokenType identifierType(Scanner *scanner) {
 static Token identifier(Scanner *scanner) {
   while (isAlphabetic(peek(scanner)) || isNumeric(peek(scanner)))
     advance(scanner);
+
   return makeToken(scanner, identifierType(scanner));
 }
 
@@ -275,7 +295,7 @@ static Token string(Scanner *scanner) {
   return makeToken(scanner, TOKEN_STRING);
 }
 
-Token scanToken(Scanner *scanner) {
+Token scanToken(Scanner *scanner, bool canBeDefinition) {
   skipWhiteSpace(scanner);
   scanner->start = scanner->current;
 
@@ -288,8 +308,23 @@ Token scanToken(Scanner *scanner) {
     return makeToken(scanner, TOKEN_µS);
   }
 
+  // Check if it's a macro definition
   if (isAlphabetic(c)) {
-    return identifier(scanner);
+    Token id = identifier(scanner);
+    if (!canBeDefinition || id.type != TOKEN_IDENTIFIER) return id;
+    ObjString *name = copyStringVal(id.start, id.length, &scanner->stringPool);
+
+    Vector definition;
+    if (!genericTableGet(&scanner->definitions, name, &definition)) return id;
+
+    // Push the defined tokens instead
+    for (int i = 0; i < definition.count - 1; i++) {
+      Token token = *(Token *)vecGet(&definition, i);
+      vecPush(&scanner->tokens, &token);
+    }
+    // Return the last token
+    Token token = *(Token *)vecGet(&definition, definition.count - 1);
+    return token;
   } else if (isNumeric(c)) {
     return number(scanner);
   }
@@ -404,9 +439,69 @@ Token scanToken(Scanner *scanner) {
 #undef RET_DOUBLE_TOKEN
 }
 
+static void errorAndSkipToNewline(Scanner *scanner, const char *message) {
+  errorToken(scanner, message, scanner->line, scanner->lineStart,
+             scanner->current);
+  while (!isAtEnd(scanner)) {
+    char last = advance(scanner);
+    if (last == '\n') break;
+  }
+  newLine(scanner);
+}
+
+static void defineStatement(Scanner *scanner) {
+  skipWhiteSpace(scanner);
+
+  if (!isAlphabetic(peek(scanner))) {
+    errorAndSkipToNewline(scanner,
+                          "A definition name cannot start with a number.");
+    return;
+  }
+
+  Token token = identifier(scanner);
+
+  // Consume 'as'
+  Token asToken = scanToken(scanner, false);
+  if (asToken.type != TOKEN_AS) {
+    errorAndSkipToNewline(
+        scanner,
+        "Expected 'as', followed by definition after definition name.");
+    return;
+  }
+
+  // Scan the remaining statements
+  Vector tokenVec = initVector(sizeof(Token));
+  for (;;) {
+    Token token = scanToken(scanner, false);
+    if (token.type == TOKEN_NEWLINE) break;
+
+    if (token.type == TOKEN_POINT_COMMA) continue;
+
+    if (token.type == TOKEN_IDENTIFIER) {
+      ObjString *referencedName =
+          copyStringVal(token.start, token.length, &scanner->stringPool);
+      Vector referencedDefinition;
+      if (genericTableGet(&scanner->definitions, referencedName,
+                          &referencedDefinition)) {
+        for (unsigned int i = 0; i < referencedDefinition.count; i++) {
+          vecPush(&tokenVec, vecGet(&referencedDefinition, i));
+        }
+        continue;
+      }
+    }
+
+    vecPush(&tokenVec, &token);
+  }
+
+  // Make a new entry in the definition table
+  ObjString *name =
+      copyStringVal(token.start, token.length, &scanner->stringPool);
+  genericTableSet(&scanner->definitions, name, &tokenVec);
+}
+
 void scanTokens(Scanner *scanner) {
   for (;;) {
-    Token token = scanToken(scanner);
+    Token token = scanToken(scanner, true);
     vecPush(&scanner->tokens, &token);
 
     if (token.type == TOKEN_EOF) return;
