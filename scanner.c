@@ -459,6 +459,10 @@ static void defineStatement(Scanner *scanner) {
   }
 
   Token token = identifier(scanner);
+  if (token.type != TOKEN_IDENTIFIER) {
+    errorAndSkipToNewline(scanner, "Identifier is an Arduint keyword.");
+    return;
+  }
 
   // Consume 'as'
   Token asToken = scanToken(scanner, false);

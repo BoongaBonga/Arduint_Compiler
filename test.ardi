@@ -1,4 +1,4 @@
-define A as B
+define define as B
 define B as A
 
 print (B);
