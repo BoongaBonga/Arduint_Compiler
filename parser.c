@@ -72,6 +72,8 @@ void freeParser(Parser *parser) {
   freeTable(&parser->globalStrings);
 }
 
+Chunk *currentChunk(Parser *parser) { return &parser->chunk; }
+
 static Token *peek(Parser *parser) {
   return vecGet(parser->tokens, parser->currentIndex);
 }
@@ -117,17 +119,34 @@ static void skipToNewline(Parser *parser) {
     next(parser);
 }
 static void skipWhiteSpace(Parser *parser) {
-  TokenType endToken = peek(parser)->type;
-  if (endToken == TOKEN_POINT_COMMA) next(parser);
   while (peek(parser)->type == TOKEN_NEWLINE) next(parser);
 }
 
 static void emitOp(Parser *parser, OpCode op) {
-  writeOperation(&parser->chunk, op);
+  writeOperation(currentChunk(parser), (uint8_t)op);
 }
 static void emitOps(Parser *parser, OpCode op1, OpCode op2) {
-  writeOperation(&parser->chunk, op1);
-  writeOperation(&parser->chunk, op2);
+  writeOperation(currentChunk(parser), op1);
+  writeOperation(currentChunk(parser), op2);
+}
+
+static int emitJump(Parser *parser, OpCode instruction) {
+  emitOp(parser, instruction);
+  emitOps(parser, 0xff, 0xff);
+  return currentChunk(parser)->byteCode.count - 2;
+}
+
+static void patchJump(Parser *parser, int offset) {
+  // -2 to adjust for the bytecode for the jump offset itself.
+  int jump = currentChunk(parser)->byteCode.count - offset - 2;
+
+  if (jump > UINT16_MAX) {
+    errorFromToken(peek(parser), "Too much code to jump over.");
+  }
+
+  *(uint8_t *)vecGet(&currentChunk(parser)->byteCode, offset) =
+      (jump >> 8) & 0xff;
+  *(uint8_t *)vecGet(&currentChunk(parser)->byteCode, offset + 1) = jump & 0xff;
 }
 
 static void errorUnexpectedToken(Token *token) {
@@ -246,7 +265,8 @@ static uint16_t identifierConstant(Parser *parser, Token *name) {
   if (containsName) return (uint16_t)value.as.number;
 
   // otherwise make one
-  uint16_t index = writeConstant(&parser->chunk, OBJECT_VAL(identifierName));
+  uint16_t index =
+      writeConstant(currentChunk(parser), OBJECT_VAL(identifierName));
 
   value.type = VAL_NUMBER;
   value.as.number = (double)index;
@@ -393,7 +413,7 @@ static void value(Parser *parser, Token *val) {
     errorFromToken(val, "Too many constants.");
   }
 
-  writeConstant(&parser->chunk, value);
+  writeConstant(currentChunk(parser), value);
 }
 
 static int infixBindingPower(TokenType op, ReturnSide retRhs) {
@@ -500,16 +520,51 @@ static int prefix(Parser *parser, Token *current, int minBp) {
 
 static int infix(Parser *parser, Token *current, int minBp) {
   TokenType op = current->type;
-  int lBindingPower = infixBindingPower(op, LHS);
-  int rBindingPower = infixBindingPower(op, RHS);
+  switch (op) {
+  case TOKEN_AND_AND: {
+    int lBindingPower = infixBindingPower(TOKEN_AND_AND, LHS);
+    int rBindingPower = infixBindingPower(TOKEN_AND_AND, RHS);
+    if (lBindingPower < minBp || lBindingPower == -1) return 1;
 
-  if (lBindingPower < minBp || lBindingPower == -1) return 1;
+    next(parser);
+    int endJump = emitJump(parser, OP_JUMP_IF_FALSE);
 
-  next(parser);
+    emitOp(parser, OP_POP);
+    expressionBp(parser, rBindingPower);
 
-  expressionBp(parser, rBindingPower);
+    patchJump(parser, endJump);
+    return 0;
+  }
+  case TOKEN_OR_OR: {
+    int lBindingPower = infixBindingPower(TOKEN_OR_OR, LHS);
+    int rBindingPower = infixBindingPower(TOKEN_OR_OR, RHS);
+    if (lBindingPower < minBp || lBindingPower == -1) return 1;
 
-  emitOp(parser, getOp(current->type, INFIX));
+    next(parser);
+    int elseJump = emitJump(parser, OP_JUMP_IF_FALSE);
+    int endJump = emitJump(parser, OP_JUMP);
+
+    patchJump(parser, elseJump);
+    emitOp(parser, OP_POP);
+
+    expressionBp(parser, rBindingPower);
+    patchJump(parser, endJump);
+    return 0;
+  }
+  default: {
+    int lBindingPower = infixBindingPower(op, LHS);
+    int rBindingPower = infixBindingPower(op, RHS);
+
+    if (lBindingPower < minBp || lBindingPower == -1) return 1;
+
+    next(parser);
+
+    expressionBp(parser, rBindingPower);
+
+    emitOp(parser, getOp(current->type, INFIX));
+    return 0;
+  }
+  }
 }
 
 static void expressionBp(Parser *parser, int minBp) {
@@ -563,6 +618,26 @@ static void printStatement(Parser *parser) {
   emitOp(parser, OP_PRINT);
 }
 
+static void ifStatement(Parser *parser) {
+  next(parser);
+  expression(parser);
+
+  consume(parser, TOKEN_THEN, peek(parser),
+          "Expect a 'then' after if condition.");
+
+  int thenJump = emitJump(parser, OP_JUMP_IF_FALSE);
+  emitOp(parser, OP_POP);
+  statement(parser);
+
+  int elseJump = emitJump(parser, OP_JUMP);
+
+  patchJump(parser, thenJump);
+  emitOp(parser, OP_POP);
+
+  if (match(parser, TOKEN_ELSE)) statement(parser);
+  patchJump(parser, elseJump);
+}
+
 static void expressionStatement(Parser *parser) {
   expression(parser);
   emitOp(parser, OP_POP);
@@ -571,8 +646,7 @@ static void expressionStatement(Parser *parser) {
 static void synchronize(Parser *parser) {
   parser->hadError = false;
   while (peek(parser)->type != TOKEN_EOF) {
-    if (peek(parser)->type == TOKEN_POINT_COMMA ||
-        peek(parser)->type == TOKEN_NEWLINE)
+    if (match(parser, TOKEN_POINT_COMMA) || peek(parser)->type == TOKEN_NEWLINE)
       break; // break out of loop & skip whitespace
 
     switch (peek(parser)->type) {
@@ -599,6 +673,7 @@ static void statement(Parser *parser) {
 
   switch (current->type) {
   case TOKEN_PRINT:                 printStatement(parser); break;
+  case TOKEN_IF:                    ifStatement(parser); break;
   case TOKEN_LEFT_SQUIGGLY_BRACKET: {
     beginScope(parser);
     block(parser);
@@ -611,6 +686,9 @@ static void statement(Parser *parser) {
     break;
   default: expressionStatement(parser); break;
   }
+
+  // Possibly skip ';'
+  match(parser, TOKEN_POINT_COMMA);
 }
 
 static void declaration(Parser *parser) {
@@ -621,10 +699,6 @@ static void declaration(Parser *parser) {
 }
 
 static void program(Parser *parser) {
-  // Guard against a semicolon on the first line
-  if (peek(parser)->type == TOKEN_POINT_COMMA)
-    errorFromToken(peek(parser), "Expected statement, but got ';'.");
-
   while (peek(parser)->type != TOKEN_EOF) {
     if (peek(parser)->type == TOKEN_EOF) break;
     declaration(parser);

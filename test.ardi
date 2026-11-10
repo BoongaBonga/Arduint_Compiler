@@ -1,4 +1,1 @@
-define define as B
-define B as A
-
-print (B);
+if a==1 && b==2 || c == 3 then print "hi";

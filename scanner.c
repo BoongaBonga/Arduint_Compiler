@@ -248,7 +248,9 @@ static TokenType identifierType(Scanner *scanner) {
   case 'T':
   case 't': {
     if (identifierLen == 2) return checkKeyword(scanner, 1, 1, "o", TOKEN_TO);
-    return checkKeyword(scanner, 1, 3, "rue", TOKEN_TRUE);
+    if (checkKeyword(scanner, 1, 3, "rue", TOKEN_TRUE) == TOKEN_TRUE)
+      return TOKEN_TRUE;
+    return checkKeyword(scanner, 1, 3, "hen", TOKEN_THEN);
   }
   case 'W':
   case 'w': return checkKeyword(scanner, 1, 4, "hile", TOKEN_WHILE);

@@ -9,6 +9,7 @@ typedef enum {
 
   // Control flow
   TOKEN_IF,
+  TOKEN_THEN,
   TOKEN_ELSE,
   TOKEN_WHILE,
   TOKEN_FOR,
