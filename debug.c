@@ -12,7 +12,7 @@
 #include "scanner.h"
 #include "token.h"
 
-const char *lexemes[71] = {
+const char *lexemes[77] = {
     "IDENTIFIER",
     "NUMBER",
     "STRING",
@@ -22,10 +22,16 @@ const char *lexemes[71] = {
     "IF",
     "THEN",
     "ELSE",
+    "SWITCH",
+    "CASE",
+    "DEFAULT",
+    "DO",
     "WHILE",
     "FOR",
     "LOOP",
     "RETURN",
+    "BREAK",
+    "CONTINUE",
     "FUNCTION",
     "FALSE",
     "TRUE",

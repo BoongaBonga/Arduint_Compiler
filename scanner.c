@@ -170,13 +170,21 @@ static TokenType identifierType(Scanner *scanner) {
       scanner->current--;
       return TOKEN_ANALOG;
     }
-    if (identifierLen == 2) return checkKeyword(scanner, 1, 1, "s", TOKEN_AS);
+    if (identifierLen == 3) return checkKeyword(scanner, 1, 1, "s", TOKEN_AS);
     return checkKeyword(scanner, 1, 2, "nd", TOKEN_AND_AND);
   }
   case 'a': {
     if (identifierLen == 3)
       return checkKeyword(scanner, 1, 2, "nd", TOKEN_AND_AND);
     return checkKeyword(scanner, 1, 1, "s", TOKEN_AS);
+  }
+  case 'B':
+  case 'b': return checkKeyword(scanner, 1, 4, "reak", TOKEN_BREAK);
+  case 'C':
+  case 'c': {
+    if (identifierLen == 8)
+      return checkKeyword(scanner, 1, 7, "ontinue", TOKEN_CONTINUE);
+    return checkKeyword(scanner, 1, 3, "ase", TOKEN_CASE);
   }
   case 'D':
   case 'd': {
@@ -189,6 +197,8 @@ static TokenType identifierType(Scanner *scanner) {
       skipWhiteSpace(scanner);
       return TOKEN_NEWLINE;
     }
+    case 2: return checkKeyword(scanner, 1, 1, "o", TOKEN_DO);
+    case 7: return checkKeyword(scanner, 1, 6, "efault", TOKEN_DEFAULT);
     case 11:
       return checkKeyword(scanner, 1, 10, "elayMicros", TOKEN_DELAY_MICROS);
     default: return checkKeyword(scanner, 1, 4, "elay", TOKEN_DELAY);
@@ -243,7 +253,10 @@ static TokenType identifierType(Scanner *scanner) {
   case 'S': return checkKeyword(scanner, 1, 5, "etPin", TOKEN_SETPIN);
   case 's': {
     if (identifierLen == 1) return TOKEN_S;
-    return checkKeyword(scanner, 1, 5, "etPin", TOKEN_SETPIN);
+    switch (*(scanner->start + 1)) {
+    case 'e': return checkKeyword(scanner, 1, 5, "etPin", TOKEN_SETPIN);
+    case 'w': return checkKeyword(scanner, 1, 5, "witch", TOKEN_SWITCH);
+    }
   }
   case 'T':
   case 't': {

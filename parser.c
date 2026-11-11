@@ -196,7 +196,7 @@ static void expression(Parser *parser);
 static void statement(Parser *parser);
 static void declaration(Parser *parser);
 
-const OpCode tokenOps[69][3] = {
+const OpCode tokenOps[77][3] = {
     // Operators
     [TOKEN_PLUS] = {OP_ERROR, OP_ADD, OP_ERROR},
     [TOKEN_MINUS] = {OP_NEGATE, OP_SUBTRACT, OP_ERROR},
@@ -623,14 +623,21 @@ static void expression(Parser *parser) { expressionBp(parser, 0); }
 //                STATEMENTS
 //____________________________________________
 
+static void expressionStatement(Parser *parser) {
+  expression(parser);
+  emitOp(parser, OP_POP);
+}
+
 static void block(Parser *parser) {
   consume(parser, TOKEN_LEFT_SQUIGGLY_BRACKET, peek(parser),
           "Cannot start a block without a '{'.");
 
-  while (!check(parser, TOKEN_RIGHT_SQUIGGLY_BRACKET) &&
-         !check(parser, TOKEN_EOF)) {
-    declaration(parser);
+  for (;;) {
     skipWhiteSpace(parser);
+    if (check(parser, TOKEN_RIGHT_SQUIGGLY_BRACKET) || check(parser, TOKEN_EOF))
+      break;
+
+    declaration(parser);
   }
 
   consume(parser, TOKEN_RIGHT_SQUIGGLY_BRACKET, peek(parser),
@@ -671,6 +678,14 @@ static void ifStatement(Parser *parser) {
   patchJump(parser, elseJump);
 }
 
+static void loopStatement(Parser *parser) {
+  Token *loopToken = next(parser);
+  int loopStart = currentChunk(parser)->byteCode.count;
+
+  statement(parser);
+  emitLoop(parser, loopStart, loopToken);
+}
+
 static void whileStatement(Parser *parser) {
   Token *whileToken = next(parser);
   int loopStart = currentChunk(parser)->byteCode.count;
@@ -685,9 +700,70 @@ static void whileStatement(Parser *parser) {
   emitOp(parser, OP_POP);
 }
 
-static void expressionStatement(Parser *parser) {
-  expression(parser);
-  emitOp(parser, OP_POP);
+static void forStatement(Parser *parser) {
+  beginScope(parser);
+
+  Token *forToken = next(parser);
+  skipWhiteSpace(parser);
+  bool hasParentheses = match(parser, TOKEN_LEFT_ROUND_BRACKET);
+
+  // Initialiser // if (<-here
+  skipWhiteSpace(parser);
+  if (match(parser, TOKEN_POINT_COMMA)) {
+    // No initialiser
+  } else {
+    expressionStatement(parser);
+
+    skipWhiteSpace(parser);
+    consume(parser, TOKEN_POINT_COMMA, peek(parser),
+            "Expect a ';' after initialiser.");
+  }
+
+  skipWhiteSpace(parser);
+
+  // Loop condition // if ( a = 0 ; <-here
+  int loopStart = currentChunk(parser)->byteCode.count;
+  int exitJump = -1;
+  if (!match(parser, TOKEN_POINT_COMMA)) {
+    expression(parser);
+
+    skipWhiteSpace(parser);
+    consume(parser, TOKEN_POINT_COMMA, peek(parser),
+            "Expect ';' after loop condition.");
+
+    // Jump out of the loop if the condition is false.
+    exitJump = emitJump(parser, OP_JUMP_IF_FALSE);
+    emitOp(parser, OP_POP); // Condition.
+  }
+
+  // Increment // if ( a = 0; a < 10 ; <-here
+  skipWhiteSpace(parser);
+  if (!match(parser, TOKEN_POINT_COMMA)) {
+    int bodyJump = emitJump(parser, OP_JUMP);
+    int incrementStart = currentChunk(parser)->byteCode.count;
+
+    expression(parser);
+    emitOp(parser, OP_POP);
+
+    skipWhiteSpace(parser);
+    consume(parser, TOKEN_RIGHT_ROUND_BRACKET, peek(parser),
+            "Expect ')' after for clauses.");
+
+    emitLoop(parser, loopStart, forToken);
+    loopStart = incrementStart;
+    patchJump(parser, bodyJump);
+  }
+
+  statement(parser);
+
+  emitLoop(parser, loopStart, forToken);
+
+  if (exitJump != -1) {
+    patchJump(parser, exitJump);
+    emitOp(parser, OP_POP); // Condition
+  }
+
+  endScope(parser);
 }
 
 static void synchronize(Parser *parser) {
@@ -708,8 +784,9 @@ static void synchronize(Parser *parser) {
     case TOKEN_SETPIN:
     case TOKEN_READPIN:
     case TOKEN_DELAY:
-    case TOKEN_DELAY_MICROS: return; // Found new statement start
-    default:                 next(parser); continue;
+    case TOKEN_LEFT_SQUIGGLY_BRACKET:
+    case TOKEN_DELAY_MICROS:          return; // Found new statement start
+    default:                          next(parser); continue;
     }
   }
   skipWhiteSpace(parser);
@@ -722,7 +799,9 @@ static void statement(Parser *parser) {
   switch (current->type) {
   case TOKEN_PRINT:                 printStatement(parser); break;
   case TOKEN_IF:                    ifStatement(parser); break;
+  case TOKEN_LOOP:                  loopStatement(parser); break;
   case TOKEN_WHILE:                 whileStatement(parser); break;
+  case TOKEN_FOR:                   forStatement(parser); break;
   case TOKEN_LEFT_SQUIGGLY_BRACKET: {
     beginScope(parser);
     block(parser);
