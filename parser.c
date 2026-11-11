@@ -369,10 +369,10 @@ static void namedVariable(Parser *parser, Token *name, bool canAssign) {
   } else if (canAssign && isAssignmentToken(peek(parser))) {
     TokenType op = next(parser)->type;
 
-    expression(parser);
-
     // Get global -> add expr -> set global
     emitOps(parser, getOperation, (uint8_t)arg);
+    expression(parser);
+
     emitOp(parser, getOp(op, INFIX));
     emitOps(parser, setOperation, (uint8_t)arg);
   } else {
@@ -700,6 +700,29 @@ static void whileStatement(Parser *parser) {
   emitOp(parser, OP_POP);
 }
 
+static void doWhileStatement(Parser *parser) {
+  // Do
+  Token *doToken = next(parser);
+  int loopStart = currentChunk(parser)->byteCode.count;
+
+  // Something
+  statement(parser);
+
+  // while
+  skipWhiteSpace(parser);
+  consume(parser, TOKEN_WHILE, peek(parser),
+          "Expect a 'while [condition]' after statement.");
+
+  // Condition
+  expression(parser);
+  int exitJump = emitJump(parser, OP_JUMP_IF_FALSE);
+  emitOp(parser, OP_POP);
+  emitLoop(parser, loopStart, doToken);
+
+  patchJump(parser, exitJump);
+  emitOp(parser, OP_POP);
+}
+
 static void forStatement(Parser *parser) {
   beginScope(parser);
 
@@ -779,6 +802,10 @@ static void synchronize(Parser *parser) {
     case TOKEN_FOR:
     case TOKEN_IF:
     case TOKEN_WHILE:
+    case TOKEN_DO:
+    case TOKEN_BREAK:
+    case TOKEN_CONTINUE:
+    case TOKEN_SWITCH:
     case TOKEN_LOOP:
     case TOKEN_RETURN:
     case TOKEN_SETPIN:
@@ -801,6 +828,7 @@ static void statement(Parser *parser) {
   case TOKEN_IF:                    ifStatement(parser); break;
   case TOKEN_LOOP:                  loopStatement(parser); break;
   case TOKEN_WHILE:                 whileStatement(parser); break;
+  case TOKEN_DO:                    doWhileStatement(parser); break;
   case TOKEN_FOR:                   forStatement(parser); break;
   case TOKEN_LEFT_SQUIGGLY_BRACKET: {
     beginScope(parser);
