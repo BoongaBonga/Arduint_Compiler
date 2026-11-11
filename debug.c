@@ -149,7 +149,7 @@ void printValue(Value *value) {
   case VAL_NULL:   printf("NULL"); break;
   case VAL_NUMBER: printf("%lf", value->as.number); break;
   case VAL_OBJECT: printObject(value->as.object); break;
-  case VAL_BOOL:   printf("%d", value->as.boolean); break;
+  case VAL_BOOL:   printf("%s", value->as.boolean ? "true" : "false"); break;
   default:         printf("ErrorVal"); break;
   }
 }
@@ -218,6 +218,7 @@ static int printInstruction(Chunk *chunk, int offset) {
   case OP_JUMP:      return jumpInstruction("OP_JUMP", 1, chunk, offset);
   case OP_JUMP_IF_FALSE:
     return jumpInstruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
+  case OP_LOOP:       return jumpInstruction("OP_LOOP", -1, chunk, offset);
 
   case OP_ASSIGN:     return simpleInstruction("OP_ASSIGN", offset);
   case OP_POP:        return simpleInstruction("OP_POP", offset);

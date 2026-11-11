@@ -88,8 +88,15 @@ static Token *next(Parser *parser) {
   return vecGet(parser->tokens, parser->currentIndex++);
 }
 
+static void skipWhiteSpace(Parser *parser) {
+  while (peek(parser)->type == TOKEN_NEWLINE) next(parser);
+}
+
 static bool consume(Parser *parser, TokenType expected, Token *errorStart,
                     const char *message) {
+  // Skip newlines
+  skipWhiteSpace(parser);
+
   Token *current = peek(parser);
   if (current->type == expected) {
     next(parser);
@@ -118,9 +125,6 @@ static void skipToNewline(Parser *parser) {
   while (peek(parser)->type != TOKEN_NEWLINE && peek(parser)->type != TOKEN_EOF)
     next(parser);
 }
-static void skipWhiteSpace(Parser *parser) {
-  while (peek(parser)->type == TOKEN_NEWLINE) next(parser);
-}
 
 static void emitOp(Parser *parser, OpCode op) {
   writeOperation(currentChunk(parser), (uint8_t)op);
@@ -128,6 +132,17 @@ static void emitOp(Parser *parser, OpCode op) {
 static void emitOps(Parser *parser, OpCode op1, OpCode op2) {
   writeOperation(currentChunk(parser), op1);
   writeOperation(currentChunk(parser), op2);
+}
+
+static void emitLoop(Parser *parser, int loopStart, Token *loopToken) {
+  emitOp(parser, OP_LOOP);
+
+  int offset = currentChunk(parser)->byteCode.count - loopStart + 2;
+  if (offset > UINT16_MAX) {
+    errorFromToken(loopToken, "Loop body too large.");
+  }
+
+  emitOps(parser, ((offset >> 8) & 0xff), (offset & 0xff));
 }
 
 static int emitJump(Parser *parser, OpCode instruction) {
@@ -254,6 +269,12 @@ static int resolveLocal(Compiler *compiler, Token *name) {
   return -1;
 }
 
+static bool globalExists(Parser *parser, Token *name) {
+  ObjString *identifierName =
+      copyStringVal(name->start, name->length, &parser->stringPool);
+  return tableGet(&parser->globalStrings, identifierName, NULL);
+}
+
 static uint16_t identifierConstant(Parser *parser, Token *name) {
   // Check whether name is already in globals
   ObjString *identifierName =
@@ -323,19 +344,23 @@ static void namedVariable(Parser *parser, Token *name, bool canAssign) {
   uint16_t getOperation, setOperation;
   int arg = resolveLocal(&parser->compiler, name);
 
+  // If a local exists, use it
   if (arg != -1) {
     getOperation = OP_GET_LOCAL;
     setOperation = OP_SET_LOCAL;
-  } else if (parser->compiler.scopeDepth > 0) {
-    getOperation = OP_ERROR;
-    if (peek(parser)->type != TOKEN_EQUALS)
-      errorFromToken(name, "Cannot read from an undeclared variable.");
-    setOperation = OP_SET_LOCAL;
-    arg = parseVariable(parser);
   } else {
-    arg = identifierConstant(parser, name);
-    getOperation = OP_GET_GLOBAL;
-    setOperation = OP_SET_GLOBAL;
+    // Otherwise, if a global exists / we're in global scope, use that.
+    if (globalExists(parser, name) || parser->compiler.scopeDepth == 0) {
+      arg = identifierConstant(parser, name);
+      getOperation = OP_GET_GLOBAL;
+      setOperation = OP_SET_GLOBAL;
+    } else {
+      getOperation = OP_ERROR;
+      if (peek(parser)->type != TOKEN_EQUALS)
+        errorFromToken(name, "Cannot read from an undeclared variable.");
+      setOperation = OP_SET_LOCAL;
+      arg = parseVariable(parser);
+    }
   }
 
   if (canAssign && match(parser, TOKEN_EQUALS)) {
@@ -568,12 +593,14 @@ static int infix(Parser *parser, Token *current, int minBp) {
 }
 
 static void expressionBp(Parser *parser, int minBp) {
+  skipWhiteSpace(parser);
   Token *current = next(parser);
 
   if (current->type == TOKEN_EOF) return;
   if (prefix(parser, current, minBp) == -1) return;
 
   for (;;) {
+    skipWhiteSpace(parser);
     Token *current = peek(parser);
     if (current->type == TOKEN_EOF) break;
 
@@ -603,6 +630,7 @@ static void block(Parser *parser) {
   while (!check(parser, TOKEN_RIGHT_SQUIGGLY_BRACKET) &&
          !check(parser, TOKEN_EOF)) {
     declaration(parser);
+    skipWhiteSpace(parser);
   }
 
   consume(parser, TOKEN_RIGHT_SQUIGGLY_BRACKET, peek(parser),
@@ -613,6 +641,7 @@ static void printStatement(Parser *parser) {
   // Consume 'print'
   consume(parser, TOKEN_PRINT, peek(parser),
           "Tried parsing a print statement without a print token.");
+  skipWhiteSpace(parser);
 
   expression(parser);
   emitOp(parser, OP_PRINT);
@@ -620,13 +649,16 @@ static void printStatement(Parser *parser) {
 
 static void ifStatement(Parser *parser) {
   next(parser);
+
   expression(parser);
 
+  skipWhiteSpace(parser);
   consume(parser, TOKEN_THEN, peek(parser),
           "Expect a 'then' after if condition.");
 
   int thenJump = emitJump(parser, OP_JUMP_IF_FALSE);
   emitOp(parser, OP_POP);
+
   statement(parser);
 
   int elseJump = emitJump(parser, OP_JUMP);
@@ -634,8 +666,23 @@ static void ifStatement(Parser *parser) {
   patchJump(parser, thenJump);
   emitOp(parser, OP_POP);
 
+  skipWhiteSpace(parser);
   if (match(parser, TOKEN_ELSE)) statement(parser);
   patchJump(parser, elseJump);
+}
+
+static void whileStatement(Parser *parser) {
+  Token *whileToken = next(parser);
+  int loopStart = currentChunk(parser)->byteCode.count;
+  expression(parser);
+
+  int exitJump = emitJump(parser, OP_JUMP_IF_FALSE);
+  emitOp(parser, OP_POP);
+  statement(parser);
+  emitLoop(parser, loopStart, whileToken);
+
+  patchJump(parser, exitJump);
+  emitOp(parser, OP_POP);
 }
 
 static void expressionStatement(Parser *parser) {
@@ -669,11 +716,13 @@ static void synchronize(Parser *parser) {
 }
 
 static void statement(Parser *parser) {
+  skipWhiteSpace(parser);
   Token *current = peek(parser);
 
   switch (current->type) {
   case TOKEN_PRINT:                 printStatement(parser); break;
   case TOKEN_IF:                    ifStatement(parser); break;
+  case TOKEN_WHILE:                 whileStatement(parser); break;
   case TOKEN_LEFT_SQUIGGLY_BRACKET: {
     beginScope(parser);
     block(parser);
@@ -692,10 +741,8 @@ static void statement(Parser *parser) {
 }
 
 static void declaration(Parser *parser) {
-  skipWhiteSpace(parser);
   statement(parser);
   if (parser->hadError) synchronize(parser);
-  skipWhiteSpace(parser);
 }
 
 static void program(Parser *parser) {

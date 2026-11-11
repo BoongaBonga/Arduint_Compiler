@@ -147,7 +147,7 @@ bool tableGet(Table *table, ObjString *key, Value *value) {
   Entry *entry = findEntry(table->entries, table->capacity, key);
   if (entry->key == NULL) return false;
 
-  *value = entry->value;
+  if (value != NULL) *value = entry->value;
   return true;
 }
 
@@ -306,7 +306,7 @@ bool genericTableGet(GenericTable *table, ObjString *key, void *value) {
   GenericEntry *entry = findGenericEntry(table->entries, table->capacity, key);
   if (entry->key == NULL) return false;
 
-  memcpy(value, entry->value, table->elementSize);
+  if (value != NULL) memcpy(value, entry->value, table->elementSize);
   return true;
 }
 

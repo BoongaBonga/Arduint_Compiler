@@ -7,38 +7,39 @@
 #include "value.h"
 
 typedef enum {
-  OP_ERROR = UINT8_MAX,
-  OP_RETURN = 0,
-  OP_NO_OP,
-  OP_CONSTANT_8,
-  OP_CONSTANT_16,
-  OP_DEFINE_GLOBAL,
-  OP_GET_GLOBAL,
-  OP_SET_GLOBAL,
-  OP_GET_LOCAL,
-  OP_SET_LOCAL,
-  OP_PRINT,
+  OP_ERROR = UINT8_MAX, // Skip
+  OP_RETURN = 0,        // Return from current function
+  OP_NO_OP,             // Do nothing
+  OP_CONSTANT_8,        // Push a constant on the stack (u8)
+  OP_CONSTANT_16,       // Push a constant on the stack (u16)
+  OP_DEFINE_GLOBAL,     // Unused
+  OP_GET_GLOBAL,        // Push global val on stack (u8)
+  OP_SET_GLOBAL,        // Set a global (u8)
+  OP_GET_LOCAL,         // Push a local value (offset u8) on the stack
+  OP_SET_LOCAL,         // Set a value to a local with index u8 (nopop)
+  OP_PRINT,             // Print stacktop wo popping to console
 
-  OP_JUMP_IF_FALSE,
-  OP_JUMP,
+  OP_JUMP_IF_FALSE, // Jump if stackTop = false without popping (u16, fw)
+  OP_JUMP,          // Jump forward u16 offset
+  OP_LOOP,          // Jump backward u16 offset
 
-  OP_ASSIGN,
+  OP_ASSIGN, // Unused i think
 
-  OP_POP,
+  OP_POP, // Pop value off of stack
 
-  OP_ADD,
-  OP_SUBTRACT,
-  OP_MULTIPLY,
-  OP_DIVIDE,
-  OP_MODULO,
-  OP_NEGATE,
-  OP_POWER,
-  OP_AND,
-  OP_NOT,
-  OP_OR,
-  OP_XOR,
+  OP_ADD,      // Add top two stack slots and push to stack
+  OP_SUBTRACT, // Same but sub
+  OP_MULTIPLY, // "
+  OP_DIVIDE,   // "
+  OP_MODULO,   // "
+  OP_NEGATE,   // Negate top of stack
+  OP_POWER,    // do lowest stackslot to the power of stacktop and push
+  OP_AND,      // Bitwise and
+  OP_NOT,      // Not stacktop
+  OP_OR,       // Bitwise or
+  OP_XOR,      // xor
 
-  OP_EQUALS,
+  OP_EQUALS, // pushes true if top two slots are equal
   OP_NOT_EQUALS,
   OP_GREATER,
   OP_GREATER_OR_EQUAL,
