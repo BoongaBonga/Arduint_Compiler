@@ -58,11 +58,18 @@ Parser initParser(Vector *tokens) {
   Parser parser;
   parser.currentIndex = 0;
   parser.tokens = tokens;
+
   parser.chunk = initChunk();
+
   parser.hadError = false;
+  parser.isInLoop = false;
+
   parser.stringPool = initTable();
   parser.globalStrings = initTable();
   initCompiler(&parser);
+
+  parser.breaksToPatch = initVector(sizeof(Vector));
+  parser.continueIndices = initVector(sizeof(int));
   return parser;
 }
 
@@ -70,6 +77,13 @@ void freeParser(Parser *parser) {
   freeChunk(&parser->chunk);
   freeTable(&parser->stringPool);
   freeTable(&parser->globalStrings);
+
+  for (int i = 0; i < parser->breaksToPatch.count; i++) {
+    Vector *vec = (Vector *)vecGet(&parser->breaksToPatch, i);
+    freeVector(vec);
+  }
+  freeVector(&parser->breaksToPatch);
+  freeVector(&parser->continueIndices);
 }
 
 Chunk *currentChunk(Parser *parser) { return &parser->chunk; }
@@ -251,6 +265,36 @@ static void endScope(Parser *parser) {
     emitOp(parser, OP_POP);
     parser->compiler.localCount--;
   }
+}
+
+static void enterLoop(Parser *parser, int continueIndex) {
+  Vector breakVec = initVector(sizeof(int));
+  vecPush(&parser->breaksToPatch, &breakVec);
+  vecPush(&parser->continueIndices, &continueIndex);
+}
+
+static void exitLoop(Parser *parser, int breakIndex) {
+  Vector breakVec;
+  vecPop(&parser->breaksToPatch, &breakVec);
+  vecPop(&parser->continueIndices, NULL);
+
+  for (int i = 0; i < breakVec.count; i++) {
+    // Pop an offset, and at that offset we replace the jump target
+    int index;
+    vecPop(&breakVec, &index);
+
+    // Calculate offset (We can safely assume jump < u16MAX since loops can't be
+    // that big)
+    uint16_t offset = breakIndex - index - 2;
+
+    uint8_t *breakStmt =
+        (uint8_t *)vecGet(&currentChunk(parser)->byteCode, index);
+
+    *(breakStmt + 1) = (uint8_t)(offset >> 8);
+    *(breakStmt + 2) = (uint8_t)offset;
+  }
+
+  freeVector(&breakVec);
 }
 
 static bool identifiersEqual(Token *a, Token *b) {
@@ -682,8 +726,12 @@ static void loopStatement(Parser *parser) {
   Token *loopToken = next(parser);
   int loopStart = currentChunk(parser)->byteCode.count;
 
+  enterLoop(parser, loopStart);
+
   statement(parser);
   emitLoop(parser, loopStart, loopToken);
+
+  exitLoop(parser, currentChunk(parser)->byteCode.count - 1);
 }
 
 static void whileStatement(Parser *parser) {
@@ -789,6 +837,43 @@ static void forStatement(Parser *parser) {
   endScope(parser);
 }
 
+static void breakStatement(Parser *parser) {
+  if (parser->breaksToPatch.count <= 0) {
+    errorFromToken(next(parser), "Cannot break out of program.");
+    return;
+  }
+  next(parser);
+
+  // push a jump instruction to the breaksToPatch vector
+  // for any loop to deal with
+  int offset = currentChunk(parser)->byteCode.count;
+
+  Vector *breakOffsets =
+      vecGet(&parser->breaksToPatch, parser->breaksToPatch.count - 1);
+  vecPush(breakOffsets, &offset);
+
+  // push the jump instruction with dummy values
+  emitOp(parser, OP_JUMP);
+  emitOps(parser, 0xff, 0xff);
+}
+
+static void continueStatement(Parser *parser) {
+  if (parser->continueIndices.count <= 0) {
+    errorFromToken(next(parser), "Cannot continue inside of program.");
+    return;
+  }
+  next(parser);
+
+  emitOp(parser, OP_LOOP);
+
+  int loopStart = *(int *)vecGet(&parser->continueIndices,
+                                 parser->continueIndices.count - 1);
+
+  int offset = currentChunk(parser)->byteCode.count - loopStart + 2;
+
+  emitOps(parser, (uint8_t)(offset >> 8), (uint8_t)offset);
+}
+
 static void synchronize(Parser *parser) {
   parser->hadError = false;
   while (peek(parser)->type != TOKEN_EOF) {
@@ -830,6 +915,8 @@ static void statement(Parser *parser) {
   case TOKEN_WHILE:                 whileStatement(parser); break;
   case TOKEN_DO:                    doWhileStatement(parser); break;
   case TOKEN_FOR:                   forStatement(parser); break;
+  case TOKEN_BREAK:                 breakStatement(parser); break;
+  case TOKEN_CONTINUE:              continueStatement(parser); break;
   case TOKEN_LEFT_SQUIGGLY_BRACKET: {
     beginScope(parser);
     block(parser);

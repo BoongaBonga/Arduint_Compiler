@@ -23,9 +23,15 @@ typedef struct {
   Vector *tokens;
   int currentIndex;
   Chunk chunk;
+  Vector breaksToPatch;   // jumps that still need to be patched
+  Vector continueIndices; // Continue points to patch new continue statements
+
   bool hadError;
+  bool isInLoop;
+
   Table stringPool;
   Table globalStrings;
+
   Compiler compiler;
 } Parser;
 
