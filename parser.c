@@ -737,6 +737,9 @@ static void loopStatement(Parser *parser) {
 static void whileStatement(Parser *parser) {
   Token *whileToken = next(parser);
   int loopStart = currentChunk(parser)->byteCode.count;
+
+  enterLoop(parser, loopStart);
+
   expression(parser);
 
   int exitJump = emitJump(parser, OP_JUMP_IF_FALSE);
@@ -746,12 +749,16 @@ static void whileStatement(Parser *parser) {
 
   patchJump(parser, exitJump);
   emitOp(parser, OP_POP);
+
+  exitLoop(parser, currentChunk(parser)->byteCode.count - 1);
 }
 
 static void doWhileStatement(Parser *parser) {
   // Do
   Token *doToken = next(parser);
   int loopStart = currentChunk(parser)->byteCode.count;
+
+  enterLoop(parser, loopStart);
 
   // Something
   statement(parser);
@@ -769,6 +776,8 @@ static void doWhileStatement(Parser *parser) {
 
   patchJump(parser, exitJump);
   emitOp(parser, OP_POP);
+
+  exitLoop(parser, currentChunk(parser)->byteCode.count - 1);
 }
 
 static void forStatement(Parser *parser) {
@@ -794,6 +803,9 @@ static void forStatement(Parser *parser) {
 
   // Loop condition // if ( a = 0 ; <-here
   int loopStart = currentChunk(parser)->byteCode.count;
+
+  enterLoop(parser, loopStart);
+
   int exitJump = -1;
   if (!match(parser, TOKEN_POINT_COMMA)) {
     expression(parser);
@@ -833,6 +845,8 @@ static void forStatement(Parser *parser) {
     patchJump(parser, exitJump);
     emitOp(parser, OP_POP); // Condition
   }
+
+  exitLoop(parser, currentChunk(parser)->byteCode.count - 1);
 
   endScope(parser);
 }
