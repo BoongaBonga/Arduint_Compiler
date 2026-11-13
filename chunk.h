@@ -39,7 +39,8 @@ typedef enum {
   OP_OR,       // Bitwise or
   OP_XOR,      // xor
 
-  OP_EQUALS, // pushes true if top two slots are equal
+  OP_EQUALS, // pushes true if top two slots are equal (pops both)
+  OP_CASE,   // pushes true if top two slots are equal (pops only one)
   OP_NOT_EQUALS,
   OP_GREATER,
   OP_GREATER_OR_EQUAL,

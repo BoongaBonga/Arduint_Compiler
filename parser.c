@@ -722,6 +722,81 @@ static void ifStatement(Parser *parser) {
   patchJump(parser, elseJump);
 }
 
+// This can be optimised WAY more if wanted
+static void switchStatement(Parser *parser) {
+  next(parser);
+
+  skipWhiteSpace(parser);
+  expression(parser);
+
+  skipWhiteSpace(parser);
+  if (!consume(parser, TOKEN_LEFT_SQUIGGLY_BRACKET, peek(parser),
+               "Expect '{' after switch operand."))
+    return;
+
+  // Consume cases and emit if / else statements
+  Vector exitJumps = initVector(sizeof(int));
+  do {
+    skipWhiteSpace(parser);
+    if (peek(parser)->type == TOKEN_DEFAULT) break;
+
+    if (!consume(parser, TOKEN_CASE, peek(parser),
+                 "Expect 'case' inside switch statement."))
+      return;
+
+    // The value to match to gets compared to the switch value
+    expression(parser);
+    emitOp(parser, OP_CASE);
+    // If this is not it, jump to the next case.
+    int elseJump = emitJump(parser, OP_JUMP_IF_FALSE);
+
+    skipWhiteSpace(parser);
+    if (!consume(parser, TOKEN_COLON, peek(parser),
+                 "Expect ':' after switch case."))
+      return;
+
+    statement(parser);
+
+    // Register exitJump offset to be patched
+    int exitJump = emitJump(parser, OP_JUMP);
+    vecPush(&exitJumps, &exitJump);
+
+    patchJump(parser, elseJump);
+
+    skipWhiteSpace(parser);
+    if (check(parser, TOKEN_EOF)) {
+      errorFromToken(previous(parser), "Expect '}' after switch statement.");
+      return;
+    }
+  } while (!match(parser, TOKEN_RIGHT_SQUIGGLY_BRACKET));
+
+  // Potentially parse a default statement
+  if (peek(parser)->type == TOKEN_DEFAULT) {
+    next(parser);
+    if (!consume(parser, TOKEN_COLON, peek(parser),
+                 "Expect ':' after default."))
+      return;
+
+    // Parse default statement
+    statement(parser);
+
+    skipWhiteSpace(parser);
+    if (!consume(parser, TOKEN_RIGHT_SQUIGGLY_BRACKET, peek(parser),
+                 "Expect end of switch statement after default case."))
+      return;
+  }
+
+  // Patch exit jumps before default case, so they automatically go to default
+  for (int i = exitJumps.count; i > 0; i--) {
+    int exitJump;
+    vecPop(&exitJumps, &exitJump);
+    patchJump(parser, exitJump);
+  }
+
+  // Pop switch value
+  emitOp(parser, OP_POP);
+}
+
 static void loopStatement(Parser *parser) {
   Token *loopToken = next(parser);
   int loopStart = currentChunk(parser)->byteCode.count;
@@ -925,6 +1000,7 @@ static void statement(Parser *parser) {
   switch (current->type) {
   case TOKEN_PRINT:                 printStatement(parser); break;
   case TOKEN_IF:                    ifStatement(parser); break;
+  case TOKEN_SWITCH:                switchStatement(parser); break;
   case TOKEN_LOOP:                  loopStatement(parser); break;
   case TOKEN_WHILE:                 whileStatement(parser); break;
   case TOKEN_DO:                    doWhileStatement(parser); break;

@@ -241,6 +241,7 @@ static int printInstruction(Chunk *chunk, int offset) {
   case OP_XOR:        return simpleInstruction("OP_XOR", offset);
 
   case OP_EQUALS:     return simpleInstruction("OP_EQUALS", offset);
+  case OP_CASE:       return simpleInstruction("OP_CASE", offset);
   case OP_NOT_EQUALS: return simpleInstruction("OP_NOT_EQUALS", offset);
   case OP_GREATER:    return simpleInstruction("OP_GREATER", offset);
   case OP_GREATER_OR_EQUAL:
