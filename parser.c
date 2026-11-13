@@ -804,8 +804,6 @@ static void forStatement(Parser *parser) {
   // Loop condition // if ( a = 0 ; <-here
   int loopStart = currentChunk(parser)->byteCode.count;
 
-  enterLoop(parser, loopStart);
-
   int exitJump = -1;
   if (!match(parser, TOKEN_POINT_COMMA)) {
     expression(parser);
@@ -836,6 +834,8 @@ static void forStatement(Parser *parser) {
     loopStart = incrementStart;
     patchJump(parser, bodyJump);
   }
+
+  enterLoop(parser, loopStart);
 
   statement(parser);
 
