@@ -9,6 +9,7 @@ void initCmdFlags() {
   cmdFlags.debugParser = false;
   cmdFlags.debugScanner = false;
   cmdFlags.debugVM = false;
+  cmdFlags.mode = MODE_UNSET;
   cmdFlags.path = "";
 }
 

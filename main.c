@@ -59,6 +59,16 @@ static void setCmdFlags(int argc, char *argv[]) {
           case 'v': cmdFlags.debugVM = true; continue;
           default:  break;
           }
+        } else if (argv[i][1] == 'm') {
+          if (cmdFlags.mode != MODE_UNSET) {
+            defaultError("Cannot set two modes at once.");
+            exit(2);
+          }
+          switch (argv[i][2]) {
+          case 'l': cmdFlags.mode = MODE_LEX; continue;
+          case 'r': cmdFlags.mode = MODE_RUN; continue;
+          default:  break;
+          }
         }
       }
 
@@ -70,6 +80,12 @@ static void setCmdFlags(int argc, char *argv[]) {
       cmdFlags.path = argv[i];
     }
   }
+
+  if (cmdFlags.mode == MODE_UNSET) {
+    defaultError(
+        "Please enter a program mode. Either '-mr' (run) or '-ml' (lex).");
+    exit(2);
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -77,7 +93,7 @@ int main(int argc, char *argv[]) {
   if (argc < 2) {
     defaultError("Too little arguments. Please include [source].ardi.");
     return -1;
-  } else if (argc > 5) {
+  } else if (argc > 6) {
     defaultError(
         "Too many arguments. Please enter only [source].ardi and any flags.");
     return -1;
@@ -96,14 +112,12 @@ int main(int argc, char *argv[]) {
 
   if (cmdFlags.debugScanner) printTokens(&scanner.tokens);
 
-  if (scanner.hadError) return -1;
-
   Parser parser = initParser(&scanner.tokens);
   parse(&parser);
 
   if (cmdFlags.debugParser) printChunk(&parser.chunk, "Program");
 
-  if (parser.isValidProgram) {
+  if (cmdFlags.mode == MODE_RUN && parser.isValidProgram && !scanner.hadError) {
     VM vm;
     initVM(&parser, &vm);
     interpret(&vm, &parser.chunk);
