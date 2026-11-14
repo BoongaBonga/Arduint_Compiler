@@ -20,6 +20,8 @@ typedef struct {
 } Compiler;
 
 typedef struct {
+  bool isValidProgram;
+
   Vector *tokens;
   int currentIndex;
   Chunk chunk;
@@ -30,6 +32,7 @@ typedef struct {
   bool isInLoop;
 
   Table stringPool;
+  Object *objects;
   Table globalStrings;
 
   Compiler compiler;

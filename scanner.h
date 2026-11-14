@@ -15,6 +15,8 @@ typedef struct {
   Vector tokens;            // The tokens scanned
   GenericTable definitions; // Maps define's to arrays of tokens
   Table stringPool;         // Used to make some strings for definitions
+  Object *objects;          // All objects used
+  bool hadError;
 } Scanner;
 
 char *copySourceStr(const char *start, int length);

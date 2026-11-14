@@ -53,4 +53,13 @@ void customError(int startLine, int startOffset, int endLine, int endOffset,
   va_end(args);
 }
 
+void runtimeError(const char *message, ...) {
+  va_list args;
+  va_start(args, message);
+  fprintf(stderr, "(RuntimeError) [Error]: ");
+  vfprintf(stderr, message, args);
+  fprintf(stderr, "\n");
+  va_end(args);
+}
+
 #endif

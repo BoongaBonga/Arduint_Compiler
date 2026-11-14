@@ -56,6 +56,7 @@ static void initCompiler(Parser *parser) {
 
 Parser initParser(Vector *tokens) {
   Parser parser;
+  parser.isValidProgram = true;
   parser.currentIndex = 0;
   parser.tokens = tokens;
 
@@ -66,6 +67,7 @@ Parser initParser(Vector *tokens) {
 
   parser.stringPool = initTable();
   parser.globalStrings = initTable();
+  parser.objects = NULL;
   initCompiler(&parser);
 
   parser.breaksToPatch = initVector(sizeof(Vector));
@@ -314,19 +316,19 @@ static int resolveLocal(Compiler *compiler, Token *name) {
 }
 
 static bool globalExists(Parser *parser, Token *name) {
-  ObjString *identifierName =
-      copyStringVal(name->start, name->length, &parser->stringPool);
+  ObjString *identifierName = copyStringVal(&parser->objects, name->start,
+                                            name->length, &parser->stringPool);
   return tableGet(&parser->globalStrings, identifierName, NULL);
 }
 
 static uint16_t identifierConstant(Parser *parser, Token *name) {
   // Check whether name is already in globals
-  ObjString *identifierName =
-      copyStringVal(name->start, name->length, &parser->stringPool);
+  ObjString *identifierName = copyStringVal(&parser->objects, name->start,
+                                            name->length, &parser->stringPool);
 
   Value value;
   bool containsName = tableGet(&parser->globalStrings, identifierName, &value);
-  // if it is in glboals, return that index
+  // if it is in globals, return that index
   if (containsName) return (uint16_t)value.as.number;
 
   // otherwise make one
@@ -458,8 +460,8 @@ static void value(Parser *parser, Token *val) {
     break;
   }
   case TOKEN_STRING: {
-    value = OBJECT_VAL(
-        copyStringVal(val->start + 1, val->length - 2, &parser->stringPool));
+    value = OBJECT_VAL(copyStringVal(&parser->objects, val->start + 1,
+                                     val->length - 2, &parser->stringPool));
     break;
   }
   default: {
@@ -668,8 +670,9 @@ static void expression(Parser *parser) { expressionBp(parser, 0); }
 //____________________________________________
 
 static void expressionStatement(Parser *parser) {
+  int localCount = parser->compiler.localCount;
   expression(parser);
-  emitOp(parser, OP_POP);
+  if (parser->compiler.localCount == localCount) emitOp(parser, OP_POP);
 }
 
 static void block(Parser *parser) {
@@ -749,6 +752,7 @@ static void switchStatement(Parser *parser) {
     emitOp(parser, OP_CASE);
     // If this is not it, jump to the next case.
     int elseJump = emitJump(parser, OP_JUMP_IF_FALSE);
+    emitOp(parser, OP_POP);
 
     skipWhiteSpace(parser);
     if (!consume(parser, TOKEN_COLON, peek(parser),
@@ -762,6 +766,7 @@ static void switchStatement(Parser *parser) {
     vecPush(&exitJumps, &exitJump);
 
     patchJump(parser, elseJump);
+    emitOp(parser, OP_POP);
 
     skipWhiteSpace(parser);
     if (check(parser, TOKEN_EOF)) {
@@ -1026,7 +1031,10 @@ static void statement(Parser *parser) {
 
 static void declaration(Parser *parser) {
   statement(parser);
-  if (parser->hadError) synchronize(parser);
+  if (parser->hadError) {
+    parser->isValidProgram = false;
+    synchronize(parser);
+  }
 }
 
 static void program(Parser *parser) {

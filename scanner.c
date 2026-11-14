@@ -28,6 +28,8 @@ Scanner initScanner(const char *source) {
   scanner.tokens = initVector(sizeof(Token));
   scanner.definitions = initGenericTable(sizeof(Vector));
   scanner.stringPool = initTable();
+  scanner.objects = NULL;
+  scanner.hadError = false;
   return scanner;
 }
 
@@ -99,6 +101,7 @@ static void skipWhiteSpace(Scanner *scanner) {
           customError(startLine, scanner->start - startLineStart, scanner->line,
                       scanner->current - scanner->lineStart + 1,
                       "Unterminated comment.");
+          scanner->hadError = true;
 
           scanner->current += 2;
           return;
@@ -132,6 +135,7 @@ static Token makeToken(Scanner *scanner, TokenType type) {
 
 static Token errorToken(Scanner *scanner, const char *message, int line,
                         const char *lineStart, const char *errorStart) {
+  scanner->hadError = true;
   Token token;
   token.type = TOKEN_ERROR;
   token.start = message;
@@ -327,7 +331,8 @@ Token scanToken(Scanner *scanner, bool canBeDefinition) {
   if (isAlphabetic(c)) {
     Token id = identifier(scanner);
     if (!canBeDefinition || id.type != TOKEN_IDENTIFIER) return id;
-    ObjString *name = copyStringVal(id.start, id.length, &scanner->stringPool);
+    ObjString *name = copyStringVal(&scanner->objects, id.start, id.length,
+                                    &scanner->stringPool);
 
     Vector definition;
     if (!genericTableGet(&scanner->definitions, name, &definition)) return id;
@@ -497,8 +502,8 @@ static void defineStatement(Scanner *scanner) {
     if (token.type == TOKEN_POINT_COMMA) continue;
 
     if (token.type == TOKEN_IDENTIFIER) {
-      ObjString *referencedName =
-          copyStringVal(token.start, token.length, &scanner->stringPool);
+      ObjString *referencedName = copyStringVal(
+          &scanner->objects, token.start, token.length, &scanner->stringPool);
       Vector referencedDefinition;
       if (genericTableGet(&scanner->definitions, referencedName,
                           &referencedDefinition)) {
@@ -513,8 +518,8 @@ static void defineStatement(Scanner *scanner) {
   }
 
   // Make a new entry in the definition table
-  ObjString *name =
-      copyStringVal(token.start, token.length, &scanner->stringPool);
+  ObjString *name = copyStringVal(&scanner->objects, token.start, token.length,
+                                  &scanner->stringPool);
   genericTableSet(&scanner->definitions, name, &tokenVec);
 }
 

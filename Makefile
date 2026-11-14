@@ -1,5 +1,6 @@
 SOURCE = chunk.c cmdLineFlags.c collection.c common.c debug.c errorHandling.c scanner.c main.c memory.c object.c parser.c vm.c
 TARGET = arduint
+FLAGS = -ds -dp -dv
 
 INPUTFILE = test.ardi
 
@@ -17,4 +18,4 @@ run: ${TARGET}.exe
 	./${TARGET}.exe ${INPUTFILE}
 
 debug: ${TARGET}.exe
-	./${TARGET}.exe ${INPUTFILE} -ds -dp
+	./${TARGET}.exe ${INPUTFILE} ${FLAGS}

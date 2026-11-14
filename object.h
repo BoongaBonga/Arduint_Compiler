@@ -33,8 +33,10 @@ struct ObjString {
 };
 
 /// @brief copies a string as a value, will be garbage-collected
-ObjString *copyStringVal(const char *chars, int length, Table *stringPool);
+ObjString *copyStringVal(Object **objs, const char *chars, int length,
+                         Table *stringPool);
 
-ObjString *takeString(char *chars, int length, Table *stringPool);
+ObjString *takeString(Object **objs, char *chars, int length,
+                      Table *stringPool);
 
 #endif

@@ -6,6 +6,7 @@
 typedef struct {
   bool debugScanner;
   bool debugParser;
+  bool debugVM;
   const char *path;
 } CmdFlags;
 

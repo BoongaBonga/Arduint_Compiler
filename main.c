@@ -9,6 +9,7 @@
 #include "object.h"
 #include "parser.h"
 #include "scanner.h"
+#include "vm.h"
 
 static char *readFile(const char *path) {
   FILE *filePtr = fopen(path, "rb");
@@ -55,6 +56,7 @@ static void setCmdFlags(int argc, char *argv[]) {
           switch (argv[i][2]) {
           case 's': cmdFlags.debugScanner = true; continue;
           case 'p': cmdFlags.debugParser = true; continue;
+          case 'v': cmdFlags.debugVM = true; continue;
           default:  break;
           }
         }
@@ -75,8 +77,9 @@ int main(int argc, char *argv[]) {
   if (argc < 2) {
     defaultError("Too little arguments. Please include [source].ardi.");
     return -1;
-  } else if (argc > 4) {
-    defaultError("Too many arguments. Please enter only [source].ardi.");
+  } else if (argc > 5) {
+    defaultError(
+        "Too many arguments. Please enter only [source].ardi and any flags.");
     return -1;
   }
 
@@ -91,13 +94,22 @@ int main(int argc, char *argv[]) {
   Scanner scanner = initScanner(source);
   scanTokens(&scanner);
 
-  // Print the tokens in case the -ds flag is on
   if (cmdFlags.debugScanner) printTokens(&scanner.tokens);
+
+  if (scanner.hadError) return -1;
 
   Parser parser = initParser(&scanner.tokens);
   parse(&parser);
 
   if (cmdFlags.debugParser) printChunk(&parser.chunk, "Program");
+
+  if (parser.isValidProgram) {
+    VM vm;
+    initVM(&parser, &vm);
+    interpret(&vm, &parser.chunk);
+
+    freeVM(&vm);
+  }
 
   // Close down
   free(source);

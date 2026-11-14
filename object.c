@@ -10,20 +10,22 @@
 #include "memory.h"
 #include "object.h"
 #include "value.h"
+#include "vm.h"
 
-#define ALLOCATE_OBJ(type, objectType)                                         \
-  (type *)allocateObject(sizeof(type), objectType)
+#define ALLOCATE_OBJ(objs, type, objectType)                                   \
+  (type *)allocateObject(objs, sizeof(type), objectType)
 
-static Object *allocateObject(size_t size, ObjType type) {
+static Object *allocateObject(Object **objs, size_t size, ObjType type) {
   Object *object = (Object *)reallocate(NULL, 0, size);
-  object->type = type;
-  object->next = NULL;
+  object->type = OBJ_STRING;
+  object->next = *objs;
+  *objs = object;
   return object;
 }
 
-static ObjString *allocateString(char *chars, int length, uint32_t hash,
-                                 Table *stringPool) {
-  ObjString *string = ALLOCATE_OBJ(ObjString, OBJ_STRING);
+static ObjString *allocateString(Object **objs, char *chars, int length,
+                                 uint32_t hash, Table *stringPool) {
+  ObjString *string = ALLOCATE_OBJ(objs, ObjString, OBJ_STRING);
   string->length = length;
   string->chars = chars;
   string->hash = hash;
@@ -40,7 +42,8 @@ uint32_t hashString(const char *key, int length) {
   return hash;
 }
 
-ObjString *copyStringVal(const char *chars, int length, Table *stringPool) {
+ObjString *copyStringVal(Object **objs, const char *chars, int length,
+                         Table *stringPool) {
   uint32_t hash = hashString(chars, length);
   ObjString *interned = tableFindString(stringPool, chars, length, hash);
 
@@ -54,10 +57,11 @@ ObjString *copyStringVal(const char *chars, int length, Table *stringPool) {
 
   memcpy(heapChars, chars, length);
   heapChars[length] = '\0';
-  return allocateString(heapChars, length, hash, stringPool);
+  return allocateString(objs, heapChars, length, hash, stringPool);
 }
 
-ObjString *takeString(char *chars, int length, Table *stringPool) {
+ObjString *takeString(Object **objs, char *chars, int length,
+                      Table *stringPool) {
   uint32_t hash = hashString(chars, length);
   ObjString *interned = tableFindString(stringPool, chars, length, hash);
 
@@ -66,7 +70,7 @@ ObjString *takeString(char *chars, int length, Table *stringPool) {
     return interned;
   }
 
-  return allocateString(chars, length, hash, stringPool);
+  return allocateString(objs, chars, length, hash, stringPool);
 }
 
 #endif

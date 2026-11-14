@@ -1,0 +1,271 @@
+// ============================================================
+// ARDUINT OPCODE TEST SUITE
+// Tests scanner + parser code generation through source programs.
+// Run each section independently if your VM stops after errors.
+// ============================================================
+
+
+// ------------------------------------------------------------
+// 1. CONSTANTS, PRINT, POP, RETURN
+// OP_CONSTANT_8, OP_PRINT, OP_POP, OP_RETURN
+// ------------------------------------------------------------
+
+print 0
+print 1
+print 255
+print 256
+print 65535
+print true
+print false
+print null
+print "hello from Arduint"
+
+// Expression statements should discard their result with OP_POP.
+123
+"discard me"
+true
+
+
+// OP_CONSTANT_16: push enough distinct constants to exceed index 255.
+// The printed values are intentionally uninteresting; inspect the bytecode
+// and confirm that constants with indices >= 256 use OP_CONSTANT_16.
+print 1000\nprint 1001\nprint 1002\nprint 1003\nprint 1004\nprint 1005\nprint 1006\nprint 1007\nprint 1008\nprint 1009\nprint 1010\nprint 1011\nprint 1012\nprint 1013\nprint 1014\nprint 1015\nprint 1016\nprint 1017\nprint 1018\nprint 1019\nprint 1020\nprint 1021\nprint 1022\nprint 1023\nprint 1024\nprint 1025\nprint 1026\nprint 1027\nprint 1028\nprint 1029\nprint 1030\nprint 1031\nprint 1032\nprint 1033\nprint 1034\nprint 1035\nprint 1036\nprint 1037\nprint 1038\nprint 1039\nprint 1040\nprint 1041\nprint 1042\nprint 1043\nprint 1044\nprint 1045\nprint 1046\nprint 1047\nprint 1048\nprint 1049\nprint 1050\nprint 1051\nprint 1052\nprint 1053\nprint 1054\nprint 1055\nprint 1056\nprint 1057\nprint 1058\nprint 1059\nprint 1060\nprint 1061\nprint 1062\nprint 1063\nprint 1064\nprint 1065\nprint 1066\nprint 1067\nprint 1068\nprint 1069\nprint 1070\nprint 1071\nprint 1072\nprint 1073\nprint 1074\nprint 1075\nprint 1076\nprint 1077\nprint 1078\nprint 1079\nprint 1080\nprint 1081\nprint 1082\nprint 1083\nprint 1084\nprint 1085\nprint 1086\nprint 1087\nprint 1088\nprint 1089\nprint 1090\nprint 1091\nprint 1092\nprint 1093\nprint 1094\nprint 1095\nprint 1096\nprint 1097\nprint 1098\nprint 1099\nprint 1100\nprint 1101\nprint 1102\nprint 1103\nprint 1104\nprint 1105\nprint 1106\nprint 1107\nprint 1108\nprint 1109\nprint 1110\nprint 1111\nprint 1112\nprint 1113\nprint 1114\nprint 1115\nprint 1116\nprint 1117\nprint 1118\nprint 1119\nprint 1120\nprint 1121\nprint 1122\nprint 1123\nprint 1124\nprint 1125\nprint 1126\nprint 1127\nprint 1128\nprint 1129\nprint 1130\nprint 1131\nprint 1132\nprint 1133\nprint 1134\nprint 1135\nprint 1136\nprint 1137\nprint 1138\nprint 1139\nprint 1140\nprint 1141\nprint 1142\nprint 1143\nprint 1144\nprint 1145\nprint 1146\nprint 1147\nprint 1148\nprint 1149\nprint 1150\nprint 1151\nprint 1152\nprint 1153\nprint 1154\nprint 1155\nprint 1156\nprint 1157\nprint 1158\nprint 1159\nprint 1160\nprint 1161\nprint 1162\nprint 1163\nprint 1164\nprint 1165\nprint 1166\nprint 1167\nprint 1168\nprint 1169\nprint 1170\nprint 1171\nprint 1172\nprint 1173\nprint 1174\nprint 1175\nprint 1176\nprint 1177\nprint 1178\nprint 1179\nprint 1180\nprint 1181\nprint 1182\nprint 1183\nprint 1184\nprint 1185\nprint 1186\nprint 1187\nprint 1188\nprint 1189\nprint 1190\nprint 1191\nprint 1192\nprint 1193\nprint 1194\nprint 1195\nprint 1196\nprint 1197\nprint 1198\nprint 1199\nprint 1200\nprint 1201\nprint 1202\nprint 1203\nprint 1204\nprint 1205\nprint 1206\nprint 1207\nprint 1208\nprint 1209\nprint 1210\nprint 1211\nprint 1212\nprint 1213\nprint 1214\nprint 1215\nprint 1216\nprint 1217\nprint 1218\nprint 1219\nprint 1220\nprint 1221\nprint 1222\nprint 1223\nprint 1224\nprint 1225\nprint 1226\nprint 1227\nprint 1228\nprint 1229\nprint 1230\nprint 1231\nprint 1232\nprint 1233\nprint 1234\nprint 1235\nprint 1236\nprint 1237\nprint 1238\nprint 1239\nprint 1240\nprint 1241\nprint 1242\nprint 1243\nprint 1244\nprint 1245\nprint 1246\nprint 1247\nprint 1248\nprint 1249\nprint 1250\nprint 1251\nprint 1252\nprint 1253\nprint 1254\nprint 1255\nprint 1256\nprint 1257\nprint 1258\nprint 1259\n\n\n// ------------------------------------------------------------
+// 2. ARITHMETIC
+// OP_ADD, OP_SUBTRACT, OP_MULTIPLY, OP_DIVIDE,
+// OP_MODULO, OP_NEGATE, OP_POWER
+// ------------------------------------------------------------
+
+print 10 + 5
+print 10 - 5
+print 10 * 5
+print 10 / 5
+print 10 % 3
+print -10
+print 2 ^ 3
+print 2 ^ 3 ^ 2
+print (2 + 3) * 4
+print 20 / (2 + 3)
+
+
+// ------------------------------------------------------------
+// 3. BITWISE OPERATIONS
+// OP_AND, OP_OR, OP_XOR, OP_NOT
+// ------------------------------------------------------------
+
+print 6 & 3
+print 6 | 3
+print 6 xor 3
+print !true
+print !false
+
+
+// ------------------------------------------------------------
+// 4. COMPARISONS
+// OP_EQUALS, OP_NOT_EQUALS, OP_GREATER,
+// OP_GREATER_OR_EQUAL, OP_LESS, OP_LESS_OR_EQUAL
+// ------------------------------------------------------------
+
+print 5 == 5
+print 5 == 6
+print 5 != 6
+print 5 != 5
+print 7 > 3
+print 3 > 7
+print 7 >= 7
+print 7 >= 8
+print 3 < 7
+print 7 < 3
+print 7 <= 7
+print 8 <= 7
+
+
+// ------------------------------------------------------------
+// 5. LOGICAL OPERATIONS / SHORT-CIRCUIT JUMPS
+// OP_AND_AND, OP_OR_OR, OP_JUMP_IF_FALSE, OP_JUMP
+// ------------------------------------------------------------
+
+print true && true
+print true && false
+print false && true
+print false && false
+
+print true || true
+print true || false
+print false || true
+print false || false
+
+// These also test short-circuiting.
+// The right side should not be evaluated when short-circuited.
+print false && (1 / 0)
+print true || (1 / 0)
+
+
+// ------------------------------------------------------------
+// 6. GLOBAL VARIABLES
+// OP_GET_GLOBAL, OP_SET_GLOBAL
+// ------------------------------------------------------------
+
+globalValue = 10
+print globalValue
+
+globalValue = 20
+print globalValue
+
+globalValue += 5
+print globalValue
+
+globalValue -= 3
+print globalValue
+
+globalValue *= 2
+print globalValue
+
+globalValue /= 2
+print globalValue
+
+globalValue %= 4
+print globalValue
+
+
+// ------------------------------------------------------------
+// 7. LOCAL VARIABLES
+// OP_GET_LOCAL, OP_SET_LOCAL, OP_POP
+// ------------------------------------------------------------
+
+{
+    localValue = 10
+    print localValue
+
+    localValue = 25
+    print localValue
+
+    localValue += 5
+    print localValue
+
+    {
+        innerValue = 99
+        print innerValue
+        print localValue
+    }
+
+    // innerValue should have been popped when the inner scope ended.
+    print localValue
+}
+
+// localValue should have been popped when the outer scope ended.
+// Do not read it here: that should be a compile-time error.
+
+
+// ------------------------------------------------------------
+// 8. IF / ELSE
+// OP_JUMP_IF_FALSE, OP_JUMP, OP_POP
+// ------------------------------------------------------------
+
+if true then
+    print 100
+else
+    print 200
+
+if false then
+    print 300
+else
+    print 400
+
+if 10 > 5 then
+    print "comparison condition is true"
+else
+    print "comparison condition is false"
+
+
+// ------------------------------------------------------------
+// 9. WHILE LOOP
+// OP_JUMP_IF_FALSE, OP_LOOP, OP_POP
+// ------------------------------------------------------------
+
+counter = 0
+while counter < 3 {
+    print counter
+    counter += 1
+}
+
+
+// ------------------------------------------------------------
+// 10. DO-WHILE LOOP
+// OP_JUMP_IF_FALSE, OP_LOOP, OP_POP
+// ------------------------------------------------------------
+
+do {
+    print "do-while iteration"
+    counter -= 1
+} while counter > 0
+
+
+// ------------------------------------------------------------
+// 11. FOR LOOP
+// OP_JUMP, OP_JUMP_IF_FALSE, OP_LOOP,
+// OP_GET_LOCAL, OP_SET_LOCAL, OP_POP
+// ------------------------------------------------------------
+
+for (i = 0; i < 3; i += 1) {
+    print i
+}
+
+
+// ------------------------------------------------------------
+// 12. LOOP, BREAK AND CONTINUE
+// OP_LOOP, OP_JUMP
+// ------------------------------------------------------------
+
+// A loop with a break.
+counter = 0
+loop {
+    counter += 1
+    if counter == 3 then
+        break
+    print counter
+}
+
+// A loop with continue.
+counter = 0
+loop {
+    counter += 1
+
+    if counter < 3 then
+        continue
+
+    print counter
+
+    if counter == 4 then
+        break
+}
+
+
+// ------------------------------------------------------------
+// 13. SWITCH / CASE
+// OP_CASE, OP_JUMP_IF_FALSE, OP_JUMP, OP_POP
+// ------------------------------------------------------------
+
+switch 2 {
+    case 1:
+        print "case 1"
+    case 2:
+        print "case 2"
+    case 3:
+        print "case 3"
+}
+
+// Default branch.
+switch 99 {
+    case 1:
+        print "one"
+    case 2:
+        print "two"
+    default:
+        print "default branch"
+}
+
+
+// ------------------------------------------------------------
+// 14. END OF PROGRAM
+// OP_RETURN is emitted by the parser after all statements.
+// ------------------------------------------------------------

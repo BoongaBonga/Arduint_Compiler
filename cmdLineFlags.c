@@ -8,6 +8,7 @@ CmdFlags cmdFlags;
 void initCmdFlags() {
   cmdFlags.debugParser = false;
   cmdFlags.debugScanner = false;
+  cmdFlags.debugVM = false;
   cmdFlags.path = "";
 }
 

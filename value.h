@@ -26,8 +26,8 @@ struct Value {
   } as;
 };
 
-static inline bool isObjType(Value *value, ObjType objType) {
-  return value->type == VAL_OBJECT && value->as.object->type == objType;
+static inline bool isObjType(Value value, ObjType objType) {
+  return value.type == VAL_OBJECT && value.as.object->type == objType;
 }
 
 #endif

@@ -146,7 +146,7 @@ void printLexeme(Token *token) {
 
 void printObject(Object *object) {
   switch (object->type) {
-  case OBJ_STRING: printf("\"%s\"", ((ObjString *)object)->chars);
+  case OBJ_STRING: printf("%s", ((ObjString *)object)->chars);
   }
 }
 
@@ -198,7 +198,7 @@ static int jumpInstruction(const char *name, int sign, Chunk *chunk,
   return offset + 3;
 }
 
-static int printInstruction(Chunk *chunk, int offset) {
+int printInstruction(Chunk *chunk, int offset) {
   printf("%04d ", offset);
 
   uint8_t instruction = *(uint8_t *)vecGet(&chunk->byteCode, offset);
