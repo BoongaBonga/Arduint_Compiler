@@ -638,14 +638,13 @@ static int infix(Parser *parser, Token *current, int minBp) {
   }
 }
 
-// Returns 0 if a value was generated, 1 if it didn't
 static void expressionBp(Parser *parser, int minBp) {
   skipWhiteSpace(parser);
   Token *current = next(parser);
 
   if (current->type == TOKEN_EOF) return;
 
-  if (0 == prefix(parser, current, minBp)) return;
+  if (-1 == prefix(parser, current, minBp)) return;
 
   for (;;) {
     skipWhiteSpace(parser);
