@@ -560,13 +560,13 @@ static int prefix(Parser *parser, Token *current, int minBp) {
         current, "Putting a '+' in front of a value is unneccesary and will be "
                  "ignored.");
     int rightBindingPower = prefixBindingPower(current->type);
-    expressionBp(parser, rightBindingPower);
+    prefix(parser, next(parser), rightBindingPower);
     return 0;
   }
   case TOKEN_MINUS:
   case TOKEN_NOT:   {
     int rightBindingPower = prefixBindingPower(current->type);
-    expressionBp(parser, rightBindingPower);
+    prefix(parser, next(parser), rightBindingPower);
 
     emitOp(parser, getOp(current->type, PREFIX));
     return 0;
@@ -574,7 +574,7 @@ static int prefix(Parser *parser, Token *current, int minBp) {
 
   // Brackets
   case TOKEN_LEFT_ROUND_BRACKET: {
-    expressionBp(parser, 0);
+    expressionBp(parser, PREC_EXPRESSION);
     consume(parser, TOKEN_RIGHT_ROUND_BRACKET, current,
             "Found no closing parentheses after '('.");
     return 0;
@@ -638,12 +638,14 @@ static int infix(Parser *parser, Token *current, int minBp) {
   }
 }
 
+// Returns 0 if a value was generated, 1 if it didn't
 static void expressionBp(Parser *parser, int minBp) {
   skipWhiteSpace(parser);
   Token *current = next(parser);
 
   if (current->type == TOKEN_EOF) return;
-  if (prefix(parser, current, minBp) == -1) return;
+
+  if (0 == prefix(parser, current, minBp)) return;
 
   for (;;) {
     skipWhiteSpace(parser);
@@ -661,6 +663,7 @@ static void expressionBp(Parser *parser, int minBp) {
     parser->hadError = true;
     next(parser);
   }
+  return;
 }
 
 static void expression(Parser *parser) { expressionBp(parser, 0); }

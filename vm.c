@@ -21,7 +21,8 @@ static void resetStack(VM *vm) { vm->stackTop = vm->stack; }
 void initVM(Parser *parser, VM *vm) {
   vm->objects = NULL;
   vm->strings = parser->stringPool;
-  vm->globals = parser->globalStrings;
+  // vm->globals = parser->globalStrings;
+  vm->globals = initTable();
   vm->localCount = 0;
   resetStack(vm);
 }
@@ -166,7 +167,10 @@ static InterpretResult run(VM *vm) {
     case OP_GET_GLOBAL: {
       Value identifierName = READ_CONSTANT_8();
       Value val;
-      tableGet(&vm->globals, AS_OBJ_STRING(identifierName), &val);
+      if (!tableGet(&vm->globals, AS_OBJ_STRING(identifierName), &val)) {
+        runtimeError("Cannot access an undeclared variable.");
+        return INTERPRET_RUNTIME_ERROR;
+      }
       push(vm, val);
       break;
     }
