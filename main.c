@@ -93,10 +93,6 @@ int main(int argc, char *argv[]) {
   if (argc < 2) {
     defaultError("Too little arguments. Please include [source].ardi.");
     return -1;
-  } else if (argc > 6) {
-    defaultError(
-        "Too many arguments. Please enter only [source].ardi and any flags.");
-    return -1;
   }
 
   // Set flags

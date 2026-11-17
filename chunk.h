@@ -12,6 +12,7 @@ typedef enum {
   OP_NO_OP,             // Do nothing
   OP_CONSTANT_8,        // Push a constant on the stack (u8)
   OP_CONSTANT_16,       // Push a constant on the stack (u16)
+  OP_PUSH_1,            // Pushes 1 on the stack
   OP_DEFINE_GLOBAL,     // Unused
   OP_GET_GLOBAL,        // Push global val on stack (u8)
   OP_SET_GLOBAL,        // Set a global (u8)

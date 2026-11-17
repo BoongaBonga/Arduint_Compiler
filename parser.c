@@ -99,6 +99,19 @@ static Token *previous(Parser *parser) {
   return vecGet(parser->tokens, parser->currentIndex - 1);
 }
 
+static Token *peekBehind(Parser *parser, int offset) {
+  if (parser->currentIndex - offset < 0) return NULL;
+  return vecGet(parser->tokens, parser->currentIndex - offset);
+}
+static Token *peekAhead(Parser *parser, int offset) {
+  if (parser->currentIndex + offset > parser->chunk.byteCode.count) return NULL;
+  Token *tok = vecGet(parser->tokens, parser->currentIndex - offset);
+  printf("\n");
+  printToken(tok);
+  printf(": hi\n");
+  return tok;
+}
+
 static Token *next(Parser *parser) {
   if (peek(parser)->type == TOKEN_EOF) return peek(parser);
   return vecGet(parser->tokens, parser->currentIndex++);
@@ -106,6 +119,11 @@ static Token *next(Parser *parser) {
 
 static void skipWhiteSpace(Parser *parser) {
   while (peek(parser)->type == TOKEN_NEWLINE) next(parser);
+}
+
+static void parserErrorState(Parser *parser) {
+  parser->isValidProgram = false;
+  parser->hadError = true;
 }
 
 static bool consume(Parser *parser, TokenType expected, Token *errorStart,
@@ -122,7 +140,7 @@ static bool consume(Parser *parser, TokenType expected, Token *errorStart,
   customError(errorStart->line, errorStart->offset, current->line,
               current->offset, message);
 
-  parser->hadError = true;
+  parserErrorState(parser);
   next(parser);
   return false;
 }
@@ -156,6 +174,7 @@ static void emitLoop(Parser *parser, int loopStart, Token *loopToken) {
   int offset = currentChunk(parser)->byteCode.count - loopStart + 2;
   if (offset > UINT16_MAX) {
     errorFromToken(loopToken, "Loop body too large.");
+    parserErrorState(parser);
   }
 
   emitOps(parser, ((offset >> 8) & 0xff), (offset & 0xff));
@@ -173,6 +192,7 @@ static void patchJump(Parser *parser, int offset) {
 
   if (jump > UINT16_MAX) {
     errorFromToken(peek(parser), "Too much code to jump over.");
+    parserErrorState(parser);
   }
 
   *(uint8_t *)vecGet(&currentChunk(parser)->byteCode, offset) =
@@ -180,11 +200,12 @@ static void patchJump(Parser *parser, int offset) {
   *(uint8_t *)vecGet(&currentChunk(parser)->byteCode, offset + 1) = jump & 0xff;
 }
 
-static void errorUnexpectedToken(Token *token) {
+static void errorUnexpectedToken(Parser *parser, Token *token) {
   // The error already got reported by the scanner
   if (token->type == TOKEN_ERROR) return;
   char *src = copySourceStr(token->start, token->length);
   errorFromToken(token, "Unexpected token '%s'", src);
+  parserErrorState(parser);
   free(src);
 }
 
@@ -212,7 +233,7 @@ static void expression(Parser *parser);
 static void statement(Parser *parser);
 static void declaration(Parser *parser);
 
-const OpCode tokenOps[77][3] = {
+const OpCode tokenOps[79][3] = {
     // Operators
     [TOKEN_PLUS] = {OP_ERROR, OP_ADD, OP_ERROR},
     [TOKEN_MINUS] = {OP_NEGATE, OP_SUBTRACT, OP_ERROR},
@@ -248,6 +269,9 @@ const OpCode tokenOps[77][3] = {
     [TOKEN_AND_EQUALS] = {OP_ERROR, OP_AND, OP_ERROR},
     [TOKEN_OR_EQUALS] = {OP_ERROR, OP_OR, OP_ERROR},
     [TOKEN_PERCENT_EQUALS] = {OP_ERROR, OP_MODULO, OP_ERROR},
+
+    [TOKEN_PLUS_PLUS] = {OP_ADD, OP_ERROR, OP_ADD},
+    [TOKEN_MINUS_MINUS] = {OP_SUBTRACT, OP_ERROR, OP_SUBTRACT},
 
     [TOKEN_AND_AND] = {OP_ERROR, OP_AND_AND, OP_ERROR},
     [TOKEN_OR_OR] = {OP_ERROR, OP_OR_OR, OP_ERROR},
@@ -344,6 +368,7 @@ static uint16_t identifierConstant(Parser *parser, Token *name) {
 static void addLocal(Parser *parser, Token name) {
   if (parser->compiler.localCount == UINT8_COUNT) {
     errorFromToken(previous(parser), "Too many local variables in one block.");
+    parserErrorState(parser);
     return;
   }
 
@@ -365,6 +390,7 @@ static void declareVariable(Parser *parser) {
 
     if (identifiersEqual(name, &local->name)) {
       errorFromToken(name, "Already a variable with this name in this scope.");
+      parserErrorState(parser);
     }
   }
 
@@ -402,8 +428,10 @@ static void namedVariable(Parser *parser, Token *name, bool canAssign) {
       setOperation = OP_SET_GLOBAL;
     } else {
       getOperation = OP_ERROR;
-      if (peek(parser)->type != TOKEN_EQUALS)
+      if (peek(parser)->type != TOKEN_EQUALS) {
         errorFromToken(name, "Cannot read from an undeclared variable.");
+        parserErrorState(parser);
+      }
       setOperation = OP_SET_LOCAL;
       arg = parseVariable(parser);
     }
@@ -415,18 +443,39 @@ static void namedVariable(Parser *parser, Token *name, bool canAssign) {
   } else if (canAssign && isAssignmentToken(peek(parser))) {
     TokenType op = next(parser)->type;
 
-    // Get global -> add expr -> set global
+    // Get var -> add expr -> set global
     emitOps(parser, getOperation, (uint8_t)arg);
     expression(parser);
 
     emitOp(parser, getOp(op, INFIX));
     emitOps(parser, setOperation, (uint8_t)arg);
+  } else if (peekBehind(parser, 2)->type == TOKEN_PLUS_PLUS ||
+             peekBehind(parser, 2)->type == TOKEN_MINUS_MINUS) {
+    // Get var -> add 1 -> set var
+    TokenType op = peekBehind(parser, 2)->type;
+    emitOps(parser, getOperation, (uint8_t)arg);
+    emitOps(parser, OP_PUSH_1, getOp(op, PREFIX));
+    emitOps(parser, setOperation, (uint8_t)arg);
+  } else if (peek(parser)->type == TOKEN_PLUS_PLUS ||
+             peek(parser)->type == TOKEN_MINUS_MINUS) {
+    // Get var -> add 1 -> set var
+    TokenType op = peek(parser)->type;
+    emitOps(parser, getOperation, (uint8_t)arg);
+    emitOps(parser, getOperation, (uint8_t)arg);
+    emitOps(parser, OP_PUSH_1, getOp(op, PREFIX));
+    emitOps(parser, setOperation, (uint8_t)arg);
+    emitOp(parser, OP_POP);
   } else {
     emitOps(parser, getOperation, (uint8_t)arg);
   }
 }
 
 static void identifier(Parser *parser, Token *name, bool canAssign) {
+  if (name->type != TOKEN_IDENTIFIER) {
+    errorFromToken(name, "Cannot parse a non-variable as a variable.");
+    parserErrorState(parser);
+    return;
+  }
   namedVariable(parser, name, canAssign);
 }
 
@@ -468,7 +517,7 @@ static void value(Parser *parser, Token *val) {
     char *source = copySourceStr(val->start, val->length);
     errorFromToken(val, "Cannot parse a value from '%s'", source);
     free(source);
-    parser->hadError = true;
+    parserErrorState(parser);
     return;
   }
   }
@@ -482,6 +531,7 @@ static void value(Parser *parser, Token *val) {
     emitOps(parser, (uint8_t)(index >> 8), (uint8_t)index);
   } else {
     errorFromToken(val, "Too many constants.");
+    parserErrorState(parser);
   }
 
   writeConstant(currentChunk(parser), value);
@@ -531,7 +581,17 @@ static int prefixBindingPower(TokenType op) {
   case TOKEN_NOT:
   case TOKEN_PLUS:               return PREC_UNARY * 2;
   case TOKEN_LEFT_ROUND_BRACKET: return PREC_GROUPING * 2;
+  case TOKEN_PLUS_PLUS:
+  case TOKEN_MINUS_MINUS:        return PREC_POSTFIX * 2;
   default:                       return -1;
+  }
+}
+
+static int postfixBindingPower(TokenType op) {
+  switch (op) {
+  case TOKEN_PLUS_PLUS:
+  case TOKEN_MINUS_MINUS: return PREC_POSTFIX * 2 + 1;
+  default:                return -1;
   }
 }
 
@@ -563,6 +623,12 @@ static int prefix(Parser *parser, Token *current, int minBp) {
     prefix(parser, next(parser), rightBindingPower);
     return 0;
   }
+  case TOKEN_PLUS_PLUS:
+  case TOKEN_MINUS_MINUS: {
+    // try parsing a variable
+    identifier(parser, next(parser), false);
+    return 0;
+  }
   case TOKEN_MINUS:
   case TOKEN_NOT:   {
     int rightBindingPower = prefixBindingPower(current->type);
@@ -582,8 +648,8 @@ static int prefix(Parser *parser, Token *current, int minBp) {
 
   default: {
     // Report error and try parsing the next token
-    errorUnexpectedToken(current);
-    parser->hadError = true;
+    errorUnexpectedToken(parser, current);
+    parserErrorState(parser);
     return -1;
   }
   }
@@ -638,6 +704,21 @@ static int infix(Parser *parser, Token *current, int minBp) {
   }
 }
 
+static int postfix(Parser *parser, Token *current, int minBp) {
+  int lBindingPower = postfixBindingPower(current->type);
+  if (lBindingPower < minBp) return 1;
+
+  switch (current->type) {
+  case TOKEN_PLUS_PLUS:
+  case TOKEN_MINUS_MINUS: {
+    // identifier(parser, previous(parser), false);
+    next(parser);
+    return 0;
+  }
+  default: return 0;
+  }
+}
+
 static void expressionBp(Parser *parser, int minBp) {
   skipWhiteSpace(parser);
   Token *current = next(parser);
@@ -650,6 +731,10 @@ static void expressionBp(Parser *parser, int minBp) {
     skipWhiteSpace(parser);
     Token *current = peek(parser);
     if (current->type == TOKEN_EOF) break;
+    if (postfixBindingPower(current->type) != -1) {
+      if (postfix(parser, current, minBp) == 1) break;
+      // check if the token can be a postfix, then parse it.
+    }
 
     if (infix(parser, current, minBp) == 1) break;
   }
@@ -659,7 +744,7 @@ static void expressionBp(Parser *parser, int minBp) {
   if (!canAssign && isAssignmentToken(peek(parser))) {
     // Reuse the current token at the start of the expression
     errorFromToken(peek(parser), "Invalid assignment target.");
-    parser->hadError = true;
+    parserErrorState(parser);
     next(parser);
   }
   return;
@@ -773,6 +858,7 @@ static void switchStatement(Parser *parser) {
     skipWhiteSpace(parser);
     if (check(parser, TOKEN_EOF)) {
       errorFromToken(previous(parser), "Expect '}' after switch statement.");
+      parserErrorState(parser);
       return;
     }
   } while (!match(parser, TOKEN_RIGHT_SQUIGGLY_BRACKET));
@@ -936,6 +1022,7 @@ static void forStatement(Parser *parser) {
 static void breakStatement(Parser *parser) {
   if (parser->breaksToPatch.count <= 0) {
     errorFromToken(next(parser), "Cannot break out of program.");
+    parserErrorState(parser);
     return;
   }
   next(parser);
@@ -956,6 +1043,7 @@ static void breakStatement(Parser *parser) {
 static void continueStatement(Parser *parser) {
   if (parser->continueIndices.count <= 0) {
     errorFromToken(next(parser), "Cannot continue inside of program.");
+    parserErrorState(parser);
     return;
   }
   next(parser);
@@ -1023,6 +1111,7 @@ static void statement(Parser *parser) {
   case TOKEN_POINT_COMMA:
     // Report error, logic underneath will deal with cleanup
     errorFromToken(current, "Expected statement, but got ';'.");
+    parserErrorState(parser);
     break;
   default: expressionStatement(parser); break;
   }
@@ -1034,7 +1123,6 @@ static void statement(Parser *parser) {
 static void declaration(Parser *parser) {
   statement(parser);
   if (parser->hadError) {
-    parser->isValidProgram = false;
     synchronize(parser);
   }
 }

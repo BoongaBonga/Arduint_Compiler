@@ -189,7 +189,8 @@ static InterpretResult run(VM *vm) {
       vm->stack[slot] = peek(vm, 0);
       break;
     }
-    case OP_PRINT: {
+    case OP_PUSH_1: push(vm, NUMBER_VAL(1)); break;
+    case OP_PRINT:  {
       Value val = pop(vm);
       printValue(&val);
       printf("\n");

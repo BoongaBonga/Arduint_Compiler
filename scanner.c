@@ -363,18 +363,14 @@ Token scanToken(Scanner *scanner, bool canBeDefinition) {
   case '\\': return makeToken(scanner, TOKEN_BACKSLASH);
   case '+':  {
     switch (peek(scanner)) {
-    case '+': {
-      advance(scanner);
-      errorToken(scanner, "'++' is not a valid operation.", scanner->line,
-                 scanner->lineStart, scanner->current - 2);
-      break;
-    }
+    case '+': RET_DOUBLE_TOKEN(TOKEN_PLUS_PLUS);
     case '=': RET_DOUBLE_TOKEN(TOKEN_PLUS_EQUALS);
     default:  return makeToken(scanner, TOKEN_PLUS);
     }
   }
   case '-': {
     switch (peek(scanner)) {
+    case '-': RET_DOUBLE_TOKEN(TOKEN_MINUS_MINUS);
     case '=': RET_DOUBLE_TOKEN(TOKEN_MINUS_EQUALS);
     default:  return makeToken(scanner, TOKEN_MINUS);
     }

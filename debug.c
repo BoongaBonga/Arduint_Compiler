@@ -12,7 +12,7 @@
 #include "scanner.h"
 #include "token.h"
 
-const char *lexemes[77] = {
+const char *lexemes[79] = {
     "IDENTIFIER",
     "NUMBER",
     "STRING",
@@ -96,6 +96,9 @@ const char *lexemes[77] = {
     "AND_EQUALS",
     "OR_EQUALS",
     "PERCENT_EQUALS",
+
+    "PLUS_PLUS",
+    "MINUS_MINUS",
 
     "AND_AND",
     "OR_OR",
@@ -211,6 +214,7 @@ int printInstruction(Chunk *chunk, int offset) {
     return constantInstruction("OP_CONSTANT_8", false, chunk, offset);
   case OP_CONSTANT_16:
     return constantInstruction("OP_CONSTANT_16", true, chunk, offset);
+  case OP_PUSH_1: return simpleInstruction("OP_PUSH_1", offset);
   case OP_DEFINE_GLOBAL:
     return constantInstruction("OP_DEFINE_GLOBAL", false, chunk, offset);
   case OP_GET_GLOBAL:
