@@ -49,6 +49,10 @@ typedef enum {
   OP_LESS_OR_EQUAL,
   OP_AND_AND,
   OP_OR_OR,
+
+  // Arduino functions
+  OP_SETPIN,  // Sets pin (a) to value (b) on the stack
+  OP_PINMODE, // Sets pinMode of pin (a) to (b) on the stack
 } OpCode;
 
 /// @brief Bytecode chunk of uint8_t's

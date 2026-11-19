@@ -157,7 +157,7 @@ static void printFunction(ObjFunction *function) {
 
 void printObject(Object *object) {
   switch (object->type) {
-  case OBJ_STRING:   printf("%s", ((ObjString *)object)->chars);
+  case OBJ_STRING:   printf("%s", ((ObjString *)object)->chars); break;
   case OBJ_FUNCTION: printFunction((ObjFunction *)object); break;
   }
 }

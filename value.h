@@ -15,7 +15,7 @@ typedef struct Value Value;
 #define NULL_VAL ((Value){VAL_NULL, {0}})
 #define OBJECT_VAL(obj) ((Value){VAL_OBJECT, {.object = (Object *)(obj)}})
 
-typedef enum { VAL_BOOL, VAL_NUMBER, VAL_NULL, VAL_OBJECT } ValueType;
+typedef enum { VAL_NULL, VAL_BOOL, VAL_NUMBER, VAL_OBJECT } ValueType;
 
 struct Value {
   ValueType type;

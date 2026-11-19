@@ -782,6 +782,21 @@ static void block(Parser *parser) {
           "Excpect '}' after a block.");
 }
 
+static void setPinStatement(Parser *parser) {
+  next(parser);
+  skipWhiteSpace(parser);
+
+  // Parse expression for pin (digital for now)
+  expression(parser);
+
+  consume(parser, TOKEN_TO, peek(parser), "Expect 'to' after pin number.");
+
+  // Get value to set it to
+  expression(parser);
+
+  emitOp(parser, OP_SETPIN);
+}
+
 static void printStatement(Parser *parser) {
   // Consume 'print'
   consume(parser, TOKEN_PRINT, peek(parser),
@@ -1097,6 +1112,7 @@ static void statement(Parser *parser) {
   Token *current = peek(parser);
 
   switch (current->type) {
+  case TOKEN_SETPIN:                setPinStatement(parser); break;
   case TOKEN_PRINT:                 printStatement(parser); break;
   case TOKEN_IF:                    ifStatement(parser); break;
   case TOKEN_SWITCH:                switchStatement(parser); break;

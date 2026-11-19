@@ -15,6 +15,52 @@
 #include "vm.h"
 
 typedef enum { EQ_NOT_EQUAL, EQ_EQUAL, EQ_ERROR } Equality;
+typedef enum { CONVRES_OK, CONVRES_NOT_FOUND, CONVRES_ERROR } ConversionResult;
+typedef enum {
+  CONV_OBJECT,
+  CONV_NULL,
+  CONV_BOOL,
+  CONV_NUMBER,
+  CONV_STRING,
+  CONV_FUNCTION,
+  CONV_ERROR,
+} ConversionType;
+
+const char ValueTypeNames[4][8] = {
+    [VAL_NULL] = "null",
+    [VAL_BOOL] = "bool",
+    [VAL_NUMBER] = "number",
+    [VAL_OBJECT] = "object",
+};
+
+static ValueType convToValueType(ConversionType type) {
+  switch (type) {
+  case CONV_NULL:     return VAL_NULL;
+  case CONV_BOOL:     return VAL_BOOL;
+  case CONV_NUMBER:   return VAL_NUMBER;
+  case CONV_FUNCTION:
+  case CONV_STRING:   return VAL_OBJECT;
+  default:            return VAL_NULL;
+  }
+}
+static ConversionType valToConvType(ValueType type) {
+  switch (type) {
+  case VAL_NULL:   return CONV_NULL;
+  case VAL_BOOL:   return CONV_BOOL;
+  case VAL_NUMBER: return CONV_NUMBER;
+  case VAL_OBJECT: return CONV_OBJECT;
+  default:         return CONV_ERROR;
+  }
+}
+static ConversionType objToConvType(ObjType type) {
+  switch (type) {
+  case OBJ_STRING:   return CONV_STRING;
+  case OBJ_FUNCTION: return CONV_FUNCTION;
+  default:
+    runtimeError("Tried to convert a function to another type.");
+    return CONV_ERROR;
+  }
+}
 
 static void resetStack(VM *vm) {
   vm->stackTop = vm->stack;
@@ -23,14 +69,19 @@ static void resetStack(VM *vm) {
 
 void initVM(Parser *parser, VM *vm) {
   vm->objects = NULL;
-  vm->strings = parser->stringPool;
+  vm->strings = initTable();
+  tableAddAll(&parser->stringPool, &vm->strings);
   // vm->globals = parser->globalStrings;
   vm->globals = initTable();
   vm->localCount = 0;
   resetStack(vm);
 }
 
-void freeVM(VM *vm) { freeObjects(vm->objects); }
+void freeVM(VM *vm) {
+  freeObjects(vm->objects);
+  freeTable(&vm->strings);
+  freeTable(&vm->globals);
+}
 
 void push(VM *vm, Value value) { *vm->stackTop++ = value; }
 Value pop(VM *vm) { return *(--vm->stackTop); }
@@ -49,9 +100,162 @@ static int isTruthy(Value value) {
   }
 }
 
-static Equality isEqual(Value a, Value b) {
-  if (a.type != b.type) {
-    runtimeError("Cannot compare two values of different types for equality.");
+static bool canConvert(Value value, ConversionType desiredType) {
+  if ((desiredType == valToConvType(value.type)) ||
+      desiredType == CONV_STRING ||
+      (valToConvType(value.type) == CONV_OBJECT &&
+       objToConvType(value.as.object->type) == desiredType))
+    return true;
+  if (value.type == VAL_NULL || desiredType == CONV_NULL) return false;
+
+  switch (value.type) {
+  case VAL_BOOL:
+    return (desiredType == CONV_NUMBER || desiredType == CONV_STRING);
+  case VAL_NUMBER:
+    return (desiredType == CONV_BOOL || desiredType == CONV_STRING);
+  case VAL_OBJECT:
+    return (desiredType == CONV_BOOL || desiredType == CONV_NUMBER);
+  }
+  return false;
+}
+
+/// @brief returns VAL_NULL if invalid conversion.
+static Value convertValue(VM *vm, Value value, ConversionType desiredType) {
+  // Check if input is already at the desired type
+  if (desiredType == valToConvType(value.type)) return value;
+  if (desiredType == CONV_NULL) return NULL_VAL;
+  if (valToConvType(value.type) == CONV_OBJECT) {
+    if (objToConvType(value.as.object->type) == desiredType) return value;
+  }
+
+  // If not, try converting it.
+  switch (value.type) {
+  case VAL_NULL: {
+    if (desiredType == CONV_STRING)
+      return OBJECT_VAL(copyStringVal(&vm->objects, "null", 4, &vm->strings));
+    break;
+  }
+  case VAL_BOOL: {
+    bool boolVal = value.as.boolean;
+    if (desiredType == CONV_NUMBER) return NUMBER_VAL((double)boolVal);
+    if (desiredType == CONV_STRING)
+      return OBJECT_VAL(copyStringVal(&vm->objects, boolVal ? "true" : "false",
+                                      boolVal ? 4 : 5, &vm->strings));
+
+    break;
+  }
+  case VAL_NUMBER: {
+    double numVal = value.as.number;
+    if (desiredType == CONV_BOOL) return BOOL_VAL(isTruthy(value));
+    if (desiredType == CONV_STRING) {
+      char buffer[50];
+      int written = snprintf(buffer, 49, "%.17g", numVal);
+      return OBJECT_VAL(
+          copyStringVal(&vm->objects, buffer, written, &vm->strings));
+    }
+    break;
+  }
+  case VAL_OBJECT: {
+    // Try converting function to string
+    if (!IS_STRING(value)) {
+      if (!IS_FUNCTION(value) || desiredType != CONV_STRING) break;
+      ObjString *functionName = AS_OBJ_FUNCTION(value)->name;
+      return OBJECT_VAL(copyStringVal(&vm->objects, functionName->chars,
+                                      functionName->length, &vm->strings));
+    }
+
+    // Convert string
+    ObjString *string = AS_OBJ_STRING(value);
+
+    if (desiredType == CONV_BOOL) return BOOL_VAL(string->length > 1);
+    if (desiredType == CONV_NUMBER) {
+      char *endptr = NULL;
+      double num = strtod(string->chars, &endptr);
+      return NUMBER_VAL(num);
+    }
+    break;
+  }
+  }
+
+  runtimeError("Cannot convert '%s' to '%s'.", ValueTypeNames[value.type],
+               ValueTypeNames[convToValueType(desiredType)]);
+  return NULL_VAL;
+}
+
+static ConversionResult tryConvertToString(VM *vm, Value *a, Value *b) {
+  if (IS_STRING(*a)) {
+    if (!canConvert(*b, CONV_STRING)) {
+      runtimeError("Cannot convert '%s' to a string.", ValueTypeNames[b->type]);
+      return CONVRES_ERROR;
+    }
+    *b = convertValue(vm, *b, CONV_STRING);
+    return CONVRES_OK;
+  }
+  if (IS_STRING(*b)) {
+    if (!canConvert(*a, CONV_STRING)) {
+      runtimeError("Cannot convert '%s' to a string.", ValueTypeNames[a->type]);
+      return CONVRES_ERROR;
+    }
+    *a = convertValue(vm, *a, CONV_STRING);
+    return CONVRES_OK;
+  }
+  return CONVRES_NOT_FOUND;
+}
+
+static ConversionResult tryConvertToNumber(VM *vm, Value *a, Value *b) {
+  if (a->type == VAL_NUMBER) {
+    if (!canConvert(*b, CONV_NUMBER)) {
+      runtimeError("Cannot convert '%s' to a number.", ValueTypeNames[b->type]);
+      return CONVRES_ERROR;
+    }
+    *b = convertValue(vm, *b, CONV_NUMBER);
+    return CONVRES_OK;
+  }
+  if (b->type == VAL_NUMBER) {
+    if (!canConvert(*a, CONV_NUMBER)) {
+      runtimeError("Cannot convert '%s' to a number.", ValueTypeNames[a->type]);
+      return CONVRES_ERROR;
+    }
+    *a = convertValue(vm, *a, CONV_NUMBER);
+    return CONVRES_OK;
+  }
+  return CONVRES_NOT_FOUND;
+}
+
+static int convertValues(VM *vm, Value *a, Value *b, bool prioritiseStrings) {
+  if ((a->type == b->type) &&
+      (a->type != VAL_OBJECT || AS_OBJ(*a)->type == AS_OBJ(*b)->type))
+    return 0;
+
+  if (prioritiseStrings) {
+    ConversionResult result = tryConvertToString(vm, a, b);
+    if (result != 1) return result;
+  } else {
+    ConversionResult result = tryConvertToNumber(vm, a, b);
+    if (result != 1) return result;
+  }
+
+  if (a->type == VAL_NULL || b->type == VAL_NULL) {
+    runtimeError("Cannot convert null values.");
+    return -1;
+  }
+
+  if (prioritiseStrings) {
+    ConversionResult result = tryConvertToNumber(vm, a, b);
+    if (result != 1) return result;
+  } else {
+    ConversionResult result = tryConvertToString(vm, a, b);
+    if (result != 1) return result;
+  }
+
+  // If we have neither two of the same type, a string and something else or a
+  // number and a num/bool, we cannot convert them.
+  return -1;
+}
+
+static Equality isEqual(VM *vm, Value a, Value b) {
+  if (-1 == convertValues(vm, &a, &b, false)) {
+    runtimeError("Failed comparing for equality.");
     return EQ_ERROR;
   }
   switch (a.type) {
@@ -72,9 +276,9 @@ static Equality isEqual(Value a, Value b) {
   }
 }
 
-static void concatenate(VM *vm) {
-  ObjString *b = AS_OBJ_STRING(pop(vm));
-  ObjString *a = AS_OBJ_STRING(pop(vm));
+static int concatenate(VM *vm, Value aVal, Value bVal) {
+  ObjString *b = AS_OBJ_STRING(bVal);
+  ObjString *a = AS_OBJ_STRING(aVal);
 
   int length = a->length + b->length;
   char *chars = ALLOCATE(char, length + 1);
@@ -113,7 +317,6 @@ static InterpretResult run(VM *vm) {
   }
 #define BINARY_OP(op, resultMacro, errorMsg)                                   \
   do {                                                                         \
-    CHECK_NUMBERS(errorMsg)                                                    \
     double b = pop(vm).as.number;                                              \
     double a = pop(vm).as.number;                                              \
     push(vm, resultMacro(a op b));                                             \
@@ -137,6 +340,14 @@ static InterpretResult run(VM *vm) {
       bool b = pop(vm).as.boolean;                                             \
       bool a = pop(vm).as.boolean;                                             \
       push(vm, BOOL_VAL(a op b));                                              \
+    }                                                                          \
+  } while (false)
+
+#define CHECK_TYPE(value, valueType, errorMsg)                                 \
+  do {                                                                         \
+    if (value.type != valueType) {                                             \
+      runtimeError(errorMsg);                                                  \
+      return INTERPRET_RUNTIME_ERROR;                                          \
     }                                                                          \
   } while (false)
 
@@ -214,13 +425,15 @@ static InterpretResult run(VM *vm) {
     case OP_POP:  pop(vm); break;
 
     case OP_ADD:  {
-      if (IS_STRING(peek(vm, 0)) && IS_STRING(peek(vm, 1))) {
-        concatenate(vm);
-      } else if (peek(vm, 0).type == VAL_NUMBER &&
-                 peek(vm, 1).type == VAL_NUMBER) {
-        double b = pop(vm).as.number;
-        double a = pop(vm).as.number;
-        push(vm, NUMBER_VAL(a + b));
+      Value b = pop(vm);
+      Value a = pop(vm);
+      if (-1 == convertValues(vm, &a, &b, true)) return INTERPRET_RUNTIME_ERROR;
+      if (IS_STRING(a)) {
+        concatenate(vm, a, b);
+      } else if (a.type == VAL_NUMBER) {
+        push(vm, NUMBER_VAL(a.as.number + b.as.number));
+      } else if (a.type == VAL_BOOL) {
+        push(vm, NUMBER_VAL((double)(a.as.boolean + b.as.boolean)));
       } else {
         runtimeError("Operands must be two numbers or two strings.");
         return INTERPRET_RUNTIME_ERROR;
@@ -277,7 +490,7 @@ static InterpretResult run(VM *vm) {
     case OP_EQUALS: {
       Value b = pop(vm);
       Value a = pop(vm);
-      Equality equal = isEqual(a, b);
+      Equality equal = isEqual(vm, a, b);
       if (equal == EQ_ERROR) return INTERPRET_RUNTIME_ERROR;
       push(vm, BOOL_VAL(equal));
       break;
@@ -285,7 +498,7 @@ static InterpretResult run(VM *vm) {
     case OP_CASE: {
       Value b = pop(vm);
       Value a = peek(vm, 0);
-      Equality equal = isEqual(a, b);
+      Equality equal = isEqual(vm, a, b);
       if (equal == EQ_ERROR) return INTERPRET_RUNTIME_ERROR;
       push(vm, BOOL_VAL(equal));
       break;
@@ -293,7 +506,7 @@ static InterpretResult run(VM *vm) {
     case OP_NOT_EQUALS: {
       Value b = pop(vm);
       Value a = pop(vm);
-      Equality equal = isEqual(a, b);
+      Equality equal = isEqual(vm, a, b);
       if (equal == EQ_ERROR) return INTERPRET_RUNTIME_ERROR;
       push(vm, BOOL_VAL(!(bool)equal));
       break;
@@ -322,6 +535,30 @@ static InterpretResult run(VM *vm) {
       bool b = pop(vm).as.boolean;
       bool a = pop(vm).as.boolean;
       push(vm, BOOL_VAL(a || b));
+    }
+
+    // Arduino operations
+    case OP_SETPIN: {
+      Value value = pop(vm);
+      Value pin = pop(vm);
+
+      if (value.type != VAL_BOOL && value.type != VAL_NUMBER) {
+        runtimeError("Can only set pins to HIGH/LOW (or 1/0).");
+        return INTERPRET_RUNTIME_ERROR;
+      }
+      CHECK_TYPE(pin, VAL_NUMBER, "Can only write to valid pin numbers.");
+      if ((int)pin.as.number > 13 || (int)pin.as.number < 0) {
+        runtimeError("Invalid pin number '%d'.", (int)pin.as.number);
+        return INTERPRET_RUNTIME_ERROR;
+      }
+
+      printf("Setting pin %d to %f\n", (int)pin.as.number, value.as.boolean);
+      break;
+    }
+    case OP_PINMODE: {
+      Value mode = pop(vm);
+      Value pin = pop(vm);
+      break;
     }
 
     case OP_ERROR: continue;
