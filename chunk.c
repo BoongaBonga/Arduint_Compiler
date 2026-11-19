@@ -7,11 +7,9 @@
 #include "collection.h"
 #include "value.h"
 
-Chunk initChunk() {
-  Chunk chunk;
-  chunk.byteCode = initVector(sizeof(uint8_t));
-  chunk.constants = initVector(sizeof(Value));
-  return chunk;
+void initChunk(Chunk *chunk) {
+  chunk->byteCode = initVector(sizeof(uint8_t));
+  chunk->constants = initVector(sizeof(Value));
 }
 void freeChunk(Chunk *chunk) {
   freeVector(&chunk->byteCode);

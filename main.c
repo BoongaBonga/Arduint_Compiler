@@ -109,14 +109,12 @@ int main(int argc, char *argv[]) {
   if (cmdFlags.debugScanner) printTokens(&scanner.tokens);
 
   Parser parser = initParser(&scanner.tokens);
-  parse(&parser);
-
-  if (cmdFlags.debugParser) printChunk(&parser.chunk, "Program");
+  ObjFunction *program = parse(&parser);
 
   if (cmdFlags.mode == MODE_RUN && parser.isValidProgram && !scanner.hadError) {
     VM vm;
     initVM(&parser, &vm);
-    interpret(&vm, &parser.chunk);
+    interpret(&vm, program);
 
     freeVM(&vm);
   }

@@ -16,7 +16,10 @@
 
 typedef enum { EQ_NOT_EQUAL, EQ_EQUAL, EQ_ERROR } Equality;
 
-static void resetStack(VM *vm) { vm->stackTop = vm->stack; }
+static void resetStack(VM *vm) {
+  vm->stackTop = vm->stack;
+  vm->frameCount = 0;
+}
 
 void initVM(Parser *parser, VM *vm) {
   vm->objects = NULL;
@@ -84,11 +87,14 @@ static void concatenate(VM *vm) {
 }
 
 static InterpretResult run(VM *vm) {
-#define READ_BYTE() (*(uint8_t *)vecGet(&vm->chunk->byteCode, vm->ip++))
+  CallFrame *frame = &vm->frames[vm->frameCount - 1];
+
+#define READ_BYTE() (*frame->ip++)
 #define READ_SHORT() ((uint16_t)READ_BYTE() << 8 | READ_BYTE())
-#define READ_CONSTANT_8() (*(Value *)vecGet(&vm->chunk->constants, READ_BYTE()))
+#define READ_CONSTANT_8()                                                      \
+  (*(Value *)vecGet(&frame->function->chunk->constants, READ_BYTE()))
 #define READ_CONSTANT_16()                                                     \
-  (*(Value *)vecGet(&vm->chunk->constants, READ_SHORT()))
+  (*(Value *)vecGet(&frame->function->chunk->constants, READ_SHORT()))
 #define CHECK_NUMBERS(errorMsg)                                                \
   if (peek(vm, 0).type != VAL_NUMBER || peek(vm, 1).type != VAL_NUMBER) {      \
     runtimeError(errorMsg);                                                    \
@@ -147,7 +153,9 @@ static InterpretResult run(VM *vm) {
         printf(" ]");
       }
       printf("\n");
-      printInstruction(vm->chunk, vm->ip);
+      printInstruction(
+          frame->function->chunk,
+          (int)(frame->ip - (uint8_t *)frame->function->chunk->byteCode.arr));
     }
 
     uint8_t instruction;
@@ -181,12 +189,12 @@ static InterpretResult run(VM *vm) {
     }
     case OP_GET_LOCAL: {
       uint8_t slot = READ_BYTE();
-      push(vm, vm->stack[slot]);
+      push(vm, frame->slots[slot]);
       break;
     }
     case OP_SET_LOCAL: {
       uint8_t slot = READ_BYTE();
-      vm->stack[slot] = peek(vm, 0);
+      frame->slots[slot] = peek(vm, 0);
       break;
     }
     case OP_PUSH_1: push(vm, NUMBER_VAL(1)); break;
@@ -198,11 +206,11 @@ static InterpretResult run(VM *vm) {
     }
     case OP_JUMP_IF_FALSE: {
       uint16_t offset = READ_SHORT();
-      if (!isTruthy(peek(vm, 0))) vm->ip += offset;
+      if (!isTruthy(peek(vm, 0))) frame->ip += offset;
       break;
     }
-    case OP_JUMP: vm->ip += READ_SHORT(); break;
-    case OP_LOOP: vm->ip -= READ_SHORT(); break;
+    case OP_JUMP: frame->ip += READ_SHORT(); break;
+    case OP_LOOP: frame->ip -= READ_SHORT(); break;
     case OP_POP:  pop(vm); break;
 
     case OP_ADD:  {
@@ -333,9 +341,15 @@ static InterpretResult run(VM *vm) {
 #undef UNARY_OP
 }
 
-InterpretResult interpret(VM *vm, Chunk *chunk) {
-  vm->chunk = chunk;
-  vm->ip = 0;
+InterpretResult interpret(VM *vm, ObjFunction *function) {
+  if (function == NULL) return INTERPRET_COMPILE_ERROR;
+
+  push(vm, OBJECT_VAL(function));
+  CallFrame *frame = &vm->frames[vm->frameCount++];
+  frame->function = function;
+  frame->ip = (uint8_t *)function->chunk->byteCode.arr;
+  frame->slots = vm->stack;
+
   return run(vm);
 }
 

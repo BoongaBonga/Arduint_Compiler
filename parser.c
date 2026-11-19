@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "chunk.h"
+#include "cmdLineFlags.h"
 #include "collection.h"
 #include "debug.h"
 #include "errorHandling.h"
@@ -47,11 +48,17 @@ typedef struct {
 
 extern const char *lexemes;
 
-static void initCompiler(Parser *parser) {
-  Compiler compiler;
-  compiler.localCount = 0;
-  compiler.scopeDepth = 0;
-  parser->compiler = compiler;
+static void initCompiler(Parser *parser, FunctionType type) {
+  parser->compiler.function = NULL;
+  parser->compiler.type = type;
+  parser->compiler.localCount = 0;
+  parser->compiler.scopeDepth = 0;
+  parser->compiler.function = newFunction(&parser->objects);
+
+  Local *local = &parser->compiler.locals[parser->compiler.localCount++];
+  local->depth = 0;
+  local->name.start = "";
+  local->name.length = 0;
 }
 
 Parser initParser(Vector *tokens) {
@@ -60,15 +67,13 @@ Parser initParser(Vector *tokens) {
   parser.currentIndex = 0;
   parser.tokens = tokens;
 
-  parser.chunk = initChunk();
-
   parser.hadError = false;
   parser.isInLoop = false;
 
   parser.stringPool = initTable();
   parser.globalStrings = initTable();
   parser.objects = NULL;
-  initCompiler(&parser);
+  initCompiler(&parser, TYPE_SCRIPT);
 
   parser.breaksToPatch = initVector(sizeof(Vector));
   parser.continueIndices = initVector(sizeof(int));
@@ -76,7 +81,6 @@ Parser initParser(Vector *tokens) {
 }
 
 void freeParser(Parser *parser) {
-  freeChunk(&parser->chunk);
   freeTable(&parser->stringPool);
   freeTable(&parser->globalStrings);
 
@@ -88,7 +92,7 @@ void freeParser(Parser *parser) {
   freeVector(&parser->continueIndices);
 }
 
-Chunk *currentChunk(Parser *parser) { return &parser->chunk; }
+Chunk *currentChunk(Parser *parser) { return parser->compiler.function->chunk; }
 
 static Token *peek(Parser *parser) {
   return vecGet(parser->tokens, parser->currentIndex);
@@ -104,7 +108,8 @@ static Token *peekBehind(Parser *parser, int offset) {
   return vecGet(parser->tokens, parser->currentIndex - offset);
 }
 static Token *peekAhead(Parser *parser, int offset) {
-  if (parser->currentIndex + offset > parser->chunk.byteCode.count) return NULL;
+  if (parser->currentIndex + offset > currentChunk(parser)->byteCode.count)
+    return NULL;
   Token *tok = vecGet(parser->tokens, parser->currentIndex - offset);
   printf("\n");
   printToken(tok);
@@ -472,7 +477,7 @@ static void namedVariable(Parser *parser, Token *name, bool canAssign) {
 
 static void identifier(Parser *parser, Token *name, bool canAssign) {
   if (name->type != TOKEN_IDENTIFIER) {
-    errorFromToken(name, "Cannot parse a non-variable as a variable.");
+    errorFromToken(name, "Expect variable.");
     parserErrorState(parser);
     return;
   }
@@ -523,11 +528,11 @@ static void value(Parser *parser, Token *val) {
   }
 
   // If the constant offset is bigger than 255, switch to 2-byte adresses
-  if (parser->chunk.constants.count < 256) {
-    emitOps(parser, OP_CONSTANT_8, parser->chunk.constants.count);
-  } else if (parser->chunk.constants.count < UINT16_MAX) {
+  if (currentChunk(parser)->constants.count < 256) {
+    emitOps(parser, OP_CONSTANT_8, currentChunk(parser)->constants.count);
+  } else if (currentChunk(parser)->constants.count < UINT16_MAX) {
     emitOp(parser, OP_CONSTANT_16);
-    uint16_t index = parser->chunk.constants.count;
+    uint16_t index = currentChunk(parser)->constants.count;
     emitOps(parser, (uint8_t)(index >> 8), (uint8_t)index);
   } else {
     errorFromToken(val, "Too many constants.");
@@ -711,7 +716,6 @@ static int postfix(Parser *parser, Token *current, int minBp) {
   switch (current->type) {
   case TOKEN_PLUS_PLUS:
   case TOKEN_MINUS_MINUS: {
-    // identifier(parser, previous(parser), false);
     next(parser);
     return 0;
   }
@@ -733,7 +737,7 @@ static void expressionBp(Parser *parser, int minBp) {
     if (current->type == TOKEN_EOF) break;
     if (postfixBindingPower(current->type) != -1) {
       if (postfix(parser, current, minBp) == 1) break;
-      // check if the token can be a postfix, then parse it.
+      continue;
     }
 
     if (infix(parser, current, minBp) == 1) break;
@@ -1135,6 +1139,17 @@ static void program(Parser *parser) {
   emitOp(parser, OP_RETURN);
 }
 
-void parse(Parser *parser) { program(parser); }
+ObjFunction *parse(Parser *parser) {
+  program(parser);
+
+  ObjFunction *function = parser->compiler.function;
+
+  if (cmdFlags.debugParser && parser->isValidProgram) {
+    printChunk(currentChunk(parser),
+               function->name != NULL ? function->name->chars : "<script>");
+  }
+
+  return function;
+}
 
 #endif

@@ -52,12 +52,13 @@ typedef enum {
 } OpCode;
 
 /// @brief Bytecode chunk of uint8_t's
-typedef struct {
+struct Chunk {
   Vector constants; // Values
   Vector byteCode;  // uint8_ts
-} Chunk;
+};
+typedef struct Chunk Chunk;
 
-Chunk initChunk();
+void initChunk(Chunk *chunk);
 void freeChunk(Chunk *chunk);
 
 static inline void writeOperation(Chunk *chunk, uint8_t opCode) {

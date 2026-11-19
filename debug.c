@@ -147,9 +147,18 @@ void printLexeme(Token *token) {
   free(str);
 }
 
+static void printFunction(ObjFunction *function) {
+  if (function->name == NULL) {
+    printf("<script>");
+    return;
+  }
+  printf("<fn %s>", function->name->chars);
+}
+
 void printObject(Object *object) {
   switch (object->type) {
-  case OBJ_STRING: printf("%s", ((ObjString *)object)->chars);
+  case OBJ_STRING:   printf("%s", ((ObjString *)object)->chars);
+  case OBJ_FUNCTION: printFunction((ObjFunction *)object); break;
   }
 }
 

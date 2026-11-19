@@ -73,4 +73,15 @@ ObjString *takeString(Object **objs, char *chars, int length,
   return allocateString(objs, chars, length, hash, stringPool);
 }
 
+ObjFunction *newFunction(Object **objs) {
+  ObjFunction *function = ALLOCATE_OBJ(objs, ObjFunction, OBJ_FUNCTION);
+  function->arity = 0;
+  function->name = NULL;
+
+  Chunk *chunk = ALLOCATE(Chunk, 1);
+  initChunk(chunk);
+  function->chunk = chunk;
+  return function;
+}
+
 #endif

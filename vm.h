@@ -5,7 +5,14 @@
 #include "object.h"
 #include "parser.h"
 
-#define STACK_MAX 256
+#define FRAMES_MAX 64
+#define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
+
+typedef struct {
+  ObjFunction *function;
+  uint8_t *ip;
+  Value *slots;
+} CallFrame;
 
 typedef enum {
   INTERPRET_OK,
@@ -14,8 +21,8 @@ typedef enum {
 } InterpretResult;
 
 typedef struct {
-  Chunk *chunk;
-  int ip;
+  CallFrame frames[FRAMES_MAX];
+  int frameCount;
 
   Value stack[STACK_MAX];
   Value *stackTop;
@@ -32,7 +39,7 @@ typedef struct {
 void initVM(Parser *parser, VM *vm);
 void freeVM(VM *vm);
 
-InterpretResult interpret(VM *vm, Chunk *chunk);
+InterpretResult interpret(VM *vm, ObjFunction *function);
 void push(VM *vm, Value value);
 Value pop(VM *vm);
 

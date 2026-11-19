@@ -56,6 +56,13 @@ void customError(int startLine, int startOffset, int endLine, int endOffset,
 void runtimeError(const char *message, ...) {
   va_list args;
   va_start(args, message);
+
+  /* for when we added line-info
+  CallFrame* frame = &vm.frames[vm.frameCount - 1];
+  size_t instruction = frame->ip - frame->function->chunk.code - 1;
+  int line = frame->function->chunk.lines[instruction];
+  */
+
   fprintf(stderr, "(RuntimeError) [Error]: ");
   vfprintf(stderr, message, args);
   fprintf(stderr, "\n");

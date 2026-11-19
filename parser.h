@@ -6,6 +6,7 @@
 #include "chunk.h"
 #include "collection.h"
 #include "common.h"
+#include "object.h"
 #include "token.h"
 
 typedef struct {
@@ -13,27 +14,31 @@ typedef struct {
   int depth;
 } Local;
 
+typedef enum { TYPE_FUNCTION, TYPE_SCRIPT } FunctionType;
+
 typedef struct {
+  FunctionType type;
+  ObjFunction *function;
+
   Local locals[UINT8_COUNT];
   int localCount;
   int scopeDepth;
 } Compiler;
 
 typedef struct {
-  bool isValidProgram;
-
   Vector *tokens;
   int currentIndex;
-  Chunk chunk;
+
   Vector breaksToPatch;   // jumps that still need to be patched
   Vector continueIndices; // Continue points to patch new continue statements
 
+  bool isValidProgram;
   bool hadError;
   bool isInLoop;
 
   Table stringPool;
-  Object *objects;
   Table globalStrings;
+  Object *objects;
 
   Compiler compiler;
 } Parser;
@@ -41,6 +46,6 @@ typedef struct {
 Parser initParser(Vector *tokens);
 void freeParser(Parser *parser);
 
-void parse(Parser *parser);
+ObjFunction *parse(Parser *parser);
 
 #endif
