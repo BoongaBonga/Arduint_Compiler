@@ -14,6 +14,7 @@
 #include "parser.h"
 #include "scanner.h"
 #include "value.h"
+#include "vm.h"
 
 typedef enum {
   PREC_NONE,
@@ -675,6 +676,7 @@ static int infix(Parser *parser, Token *current, int minBp) {
     expressionBp(parser, rBindingPower);
 
     patchJump(parser, endJump);
+    emitOps(parser, OP_CONVERT_TYPE, CONV_BOOL);
     return 0;
   }
   case TOKEN_OR_OR: {
@@ -691,6 +693,7 @@ static int infix(Parser *parser, Token *current, int minBp) {
 
     expressionBp(parser, rBindingPower);
     patchJump(parser, endJump);
+    emitOps(parser, OP_CONVERT_TYPE, CONV_BOOL);
     return 0;
   }
   default: {

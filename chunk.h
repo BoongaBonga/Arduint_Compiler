@@ -26,7 +26,8 @@ typedef enum {
 
   OP_ASSIGN, // Unused i think
 
-  OP_POP, // Pop value off of stack
+  OP_POP,          // Pop value off of stack
+  OP_CONVERT_TYPE, // Convert stacktop to given type (u8: ConversionType)
 
   OP_ADD,      // Add top two stack slots and push to stack
   OP_SUBTRACT, // Same but sub

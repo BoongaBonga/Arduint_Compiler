@@ -8,6 +8,16 @@
 #define FRAMES_MAX 64
 #define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
 
+typedef enum {
+  CONV_OBJECT,
+  CONV_NULL,
+  CONV_BOOL,
+  CONV_NUMBER,
+  CONV_STRING,
+  CONV_FUNCTION,
+  CONV_ERROR,
+} ConversionType;
+
 typedef struct {
   ObjFunction *function;
   uint8_t *ip;

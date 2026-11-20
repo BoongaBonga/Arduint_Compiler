@@ -11,6 +11,7 @@
 #include "parser.h"
 #include "scanner.h"
 #include "token.h"
+#include "vm.h"
 
 const char *lexemes[79] = {
     "IDENTIFIER",
@@ -195,6 +196,21 @@ static int constantInstruction(const char *name, bool is16b, Chunk *chunk,
   return offset + 2 + is16b;
 }
 
+static int convertInstruction(Chunk *chunk, int offset) {
+  ConversionType type =
+      (ConversionType) * (uint8_t *)vecGet(&chunk->byteCode, offset + 1);
+
+  printf("%-16s %4d -> ", "OP_CONVERT_TYPE", type);
+  switch (type) {
+  case CONV_NULL:     printf("NULL\n"); break;
+  case CONV_BOOL:     printf("BOOL\n"); break;
+  case CONV_NUMBER:   printf("NUMBER\n"); break;
+  case CONV_STRING:   printf("STRING\n"); break;
+  case CONV_FUNCTION: printf("FUNCTION\n"); break;
+  }
+  return offset + 2;
+}
+
 static int byteInstruction(const char *name, Chunk *chunk, int offset) {
   uint8_t slot = *(uint8_t *)vecGet(&chunk->byteCode, offset + 1);
   printf("%-16s %4d\n", name, slot);
@@ -237,26 +253,28 @@ int printInstruction(Chunk *chunk, int offset) {
   case OP_JUMP:      return jumpInstruction("OP_JUMP", 1, chunk, offset);
   case OP_JUMP_IF_FALSE:
     return jumpInstruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
-  case OP_LOOP:       return jumpInstruction("OP_LOOP", -1, chunk, offset);
+  case OP_LOOP:         return jumpInstruction("OP_LOOP", -1, chunk, offset);
 
-  case OP_ASSIGN:     return simpleInstruction("OP_ASSIGN", offset);
-  case OP_POP:        return simpleInstruction("OP_POP", offset);
-  case OP_ADD:        return simpleInstruction("OP_ADD", offset);
-  case OP_SUBTRACT:   return simpleInstruction("OP_SUBTRACT", offset);
-  case OP_MULTIPLY:   return simpleInstruction("OP_MULTIPLY", offset);
-  case OP_DIVIDE:     return simpleInstruction("OP_DIVIDE", offset);
-  case OP_MODULO:     return simpleInstruction("OP_MODULO", offset);
-  case OP_POWER:      return simpleInstruction("OP_POWER", offset);
-  case OP_NEGATE:     return simpleInstruction("OP_NEGATE", offset);
-  case OP_NOT:        return simpleInstruction("OP_NOT", offset);
-  case OP_AND:        return simpleInstruction("OP_AND", offset);
-  case OP_OR:         return simpleInstruction("OP_OR", offset);
-  case OP_XOR:        return simpleInstruction("OP_XOR", offset);
+  case OP_ASSIGN:       return simpleInstruction("OP_ASSIGN", offset);
+  case OP_POP:          return simpleInstruction("OP_POP", offset);
+  case OP_CONVERT_TYPE: return convertInstruction(chunk, offset);
 
-  case OP_EQUALS:     return simpleInstruction("OP_EQUALS", offset);
-  case OP_CASE:       return simpleInstruction("OP_CASE", offset);
-  case OP_NOT_EQUALS: return simpleInstruction("OP_NOT_EQUALS", offset);
-  case OP_GREATER:    return simpleInstruction("OP_GREATER", offset);
+  case OP_ADD:          return simpleInstruction("OP_ADD", offset);
+  case OP_SUBTRACT:     return simpleInstruction("OP_SUBTRACT", offset);
+  case OP_MULTIPLY:     return simpleInstruction("OP_MULTIPLY", offset);
+  case OP_DIVIDE:       return simpleInstruction("OP_DIVIDE", offset);
+  case OP_MODULO:       return simpleInstruction("OP_MODULO", offset);
+  case OP_POWER:        return simpleInstruction("OP_POWER", offset);
+  case OP_NEGATE:       return simpleInstruction("OP_NEGATE", offset);
+  case OP_NOT:          return simpleInstruction("OP_NOT", offset);
+  case OP_AND:          return simpleInstruction("OP_AND", offset);
+  case OP_OR:           return simpleInstruction("OP_OR", offset);
+  case OP_XOR:          return simpleInstruction("OP_XOR", offset);
+
+  case OP_EQUALS:       return simpleInstruction("OP_EQUALS", offset);
+  case OP_CASE:         return simpleInstruction("OP_CASE", offset);
+  case OP_NOT_EQUALS:   return simpleInstruction("OP_NOT_EQUALS", offset);
+  case OP_GREATER:      return simpleInstruction("OP_GREATER", offset);
   case OP_GREATER_OR_EQUAL:
     return simpleInstruction("OP_GREATER_OR_EQUAL", offset);
   case OP_LESS:          return simpleInstruction("OP_LESS", offset);

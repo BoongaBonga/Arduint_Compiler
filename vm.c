@@ -19,16 +19,6 @@ typedef enum { CONVRES_OK = 0, CONVRES_ERROR = -1 } ConversionResult;
 
 #define CONVTYPE_COUNT 4 // null, bool, number, string
 
-typedef enum {
-  CONV_OBJECT,
-  CONV_NULL,
-  CONV_BOOL,
-  CONV_NUMBER,
-  CONV_STRING,
-  CONV_FUNCTION,
-  CONV_ERROR,
-} ConversionType;
-
 const ConversionType EQUALITY_PRIORITIES[CONVTYPE_COUNT] = {
     CONV_BOOL, CONV_NUMBER, CONV_STRING, CONV_NULL};
 const ConversionType ADDITION_PRIORITIES[CONVTYPE_COUNT] = {
@@ -333,19 +323,15 @@ static InterpretResult run(VM *vm) {
     }                                                                          \
     (*(vm->stackTop - 1)).as.number = op(*(vm->stackTop - 1)).as.number;       \
   } while (false)
-#define LOGIC_BINARY_OP(op, errorMsg)                                          \
+#define LOGIC_BINARY_OP(op, resultMacro, errorMsg)                             \
   do {                                                                         \
-    Value a = pop(vm);                                                         \
-    Value b = pop(vm);                                                         \
-    if (CONVRES_ERROR == convertValues(vm, &a, &b, BINARY_OP_PRIORITIES) ||    \
-        a.type == VAL_NULL) {                                                  \
+    Value b = convertValue(vm, pop(vm), CONV_NUMBER);                          \
+    Value a = convertValue(vm, pop(vm), CONV_NUMBER);                          \
+    if (a.type == VAL_NULL || b.type == VAL_NULL) {                            \
       runtimeError(errorMsg);                                                  \
       return INTERPRET_RUNTIME_ERROR;                                          \
     }                                                                          \
-    if (a.type == VAL_NUMBER)                                                  \
-      push(vm, NUMBER_VAL((double)((long)a.as.number op(long) b.as.number)));  \
-    else if (a.type == VAL_BOOL)                                               \
-      push(vm, NUMBER_VAL(a.as.boolean op b.as.boolean));                      \
+    push(vm, resultMacro((double)(((long)a.as.number)op((long)b.as.number)))); \
   } while (false)
 
 #define CHECK_TYPE(value, valueType, errorMsg)                                 \
@@ -433,11 +419,16 @@ static InterpretResult run(VM *vm) {
       if (!isTruthy(peek(vm, 0))) frame->ip += offset;
       break;
     }
-    case OP_JUMP: frame->ip += READ_SHORT(); break;
-    case OP_LOOP: frame->ip -= READ_SHORT(); break;
-    case OP_POP:  pop(vm); break;
+    case OP_JUMP:         frame->ip += READ_SHORT(); break;
+    case OP_LOOP:         frame->ip -= READ_SHORT(); break;
 
-    case OP_ADD:  {
+    case OP_POP:          pop(vm); break;
+    case OP_CONVERT_TYPE: {
+      push(vm, convertValue(vm, pop(vm), READ_BYTE()));
+      break;
+    }
+
+    case OP_ADD: {
       Value b = pop(vm);
       Value a = pop(vm);
       if (CONVRES_ERROR == convertValues(vm, &a, &b, ADDITION_PRIORITIES))
@@ -489,7 +480,9 @@ static InterpretResult run(VM *vm) {
       push(vm, NUMBER_VAL(pow(a.as.number, b.as.number)));
       break;
     }
-    case OP_AND: LOGIC_BINARY_OP(&, "Can only and numbers or booleans."); break;
+    case OP_AND:
+      LOGIC_BINARY_OP(&, NUMBER_VAL, "Can only and numbers or booleans.");
+      break;
     case OP_NOT: {
       Value a = convertValue(vm, pop(vm), CONV_BOOL);
       if (a.type != VAL_BOOL) {
@@ -499,8 +492,12 @@ static InterpretResult run(VM *vm) {
       (*(vm->stackTop - 1)).as.boolean = !(*(vm->stackTop - 1)).as.boolean;
       break;
     }
-    case OP_OR:  LOGIC_BINARY_OP(|, "Can only or numbers or booleans."); break;
-    case OP_XOR: LOGIC_BINARY_OP(^, "Can only xor numbers or booleans."); break;
+    case OP_OR:
+      LOGIC_BINARY_OP(|, NUMBER_VAL, "Can only or numbers or booleans.");
+      break;
+    case OP_XOR:
+      LOGIC_BINARY_OP(^, NUMBER_VAL, "Can only xor numbers or booleans.");
+      break;
 
     case OP_EQUALS: {
       Value b = pop(vm);
@@ -541,13 +538,13 @@ static InterpretResult run(VM *vm) {
     case OP_AND_AND: {
       bool b = isTruthy(pop(vm));
       bool a = isTruthy(pop(vm));
-      push(vm, BOOL_VAL(a && b));
+      push(vm, BOOL_VAL(a & b));
       break;
     }
     case OP_OR_OR: {
       bool b = isTruthy(pop(vm));
       bool a = isTruthy(pop(vm));
-      push(vm, BOOL_VAL(a || b));
+      push(vm, BOOL_VAL(a | b));
     }
 
     // Arduino operations
