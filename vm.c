@@ -34,7 +34,7 @@ const ConversionType EQUALITY_PRIORITIES[CONVTYPE_COUNT] = {
 const ConversionType ADDITION_PRIORITIES[CONVTYPE_COUNT] = {
     CONV_STRING, CONV_NUMBER, CONV_BOOL, CONV_NULL};
 const ConversionType BINARY_OP_PRIORITIES[CONVTYPE_COUNT] = {
-    CONV_NUMBER, CONV_BOOL, CONV_STRING, CONV_NULL};
+    CONV_NUMBER, CONV_BOOL, CONV_NULL, CONV_NULL};
 
 const char VALUE_TYPE_NAMES[4][8] = {
     [VAL_NULL] = "null",
@@ -192,7 +192,7 @@ static Value convertValue(VM *vm, Value value, ConversionType desiredType) {
 
     if (desiredType == CONV_BOOL) return BOOL_VAL(isTruthy(value));
     if (desiredType == CONV_NUMBER) {
-      if (string->length == 1) return NUMBER_VAL(0.0);
+      if (string->length == 0) return NUMBER_VAL(0.0);
       char *endptr = NULL;
       double num = strtod(string->chars, &endptr);
       return NUMBER_VAL(num);
@@ -269,7 +269,7 @@ convertValues(VM *vm, Value *a, Value *b,
 }
 
 static Equality isEqual(VM *vm, Value a, Value b) {
-  if (-1 == convertValues(vm, &a, &b, EQUALITY_PRIORITIES)) {
+  if (CONVRES_ERROR == convertValues(vm, &a, &b, EQUALITY_PRIORITIES)) {
     return EQ_ERROR;
   }
   switch (a.type) {
@@ -314,53 +314,51 @@ static InterpretResult run(VM *vm) {
   (*(Value *)vecGet(&frame->function->chunk->constants, READ_BYTE()))
 #define READ_CONSTANT_16()                                                     \
   (*(Value *)vecGet(&frame->function->chunk->constants, READ_SHORT()))
-#define CHECK_NUMBERS(errorMsg)                                                \
-  if (peek(vm, 0).type != VAL_NUMBER || peek(vm, 1).type != VAL_NUMBER) {      \
-    runtimeError(errorMsg);                                                    \
-    return INTERPRET_RUNTIME_ERROR;                                            \
-  }
-#define CHECK_BOOLEANS(errorMsg)                                               \
-  if (peek(vm, 0).type != VAL_BOOL || peek(vm, 1).type != VAL_BOOL) {          \
-    runtimeError(errorMsg);                                                    \
-    return INTERPRET_RUNTIME_ERROR;                                            \
-  }
-#define CHECK_NUMBER_OR_BOOLEAN(errorMsg)                                      \
-  if ((peek(vm, 0).type != VAL_NUMBER && peek(vm, 1).type != VAL_BOOL) ||      \
-      (peek(vm, 0).type != peek(vm, 1).type)) {                                \
-    runtimeError(errorMsg);                                                    \
-    return INTERPRET_RUNTIME_ERROR;                                            \
-  }
 #define BINARY_OP(op, resultMacro, errorMsg)                                   \
   do {                                                                         \
-    double b = pop(vm).as.number;                                              \
-    double a = pop(vm).as.number;                                              \
-    push(vm, resultMacro(a op b));                                             \
+    Value b = convertValue(vm, pop(vm), CONV_NUMBER);                          \
+    Value a = convertValue(vm, pop(vm), CONV_NUMBER);                          \
+    if (a.type == VAL_NULL || b.type == VAL_NULL) {                            \
+      runtimeError(errorMsg);                                                  \
+      return INTERPRET_RUNTIME_ERROR;                                          \
+    }                                                                          \
+    push(vm, resultMacro(a.as.number op b.as.number));                         \
   } while (false)
 #define UNARY_OP(op, errorMsg)                                                 \
   do {                                                                         \
-    if (peek(vm, 0).type != VAL_NUMBER) {                                      \
+    Value a = convertValue(vm, pop(vm), CONV_NUMBER);                          \
+    if (a.type != VAL_NUMBER) {                                                \
       runtimeError(errorMsg);                                                  \
       return INTERPRET_RUNTIME_ERROR;                                          \
     }                                                                          \
     (*(vm->stackTop - 1)).as.number = op(*(vm->stackTop - 1)).as.number;       \
   } while (false)
-#define INT_BINARY_OP(op, errorMsg)                                            \
+#define LOGIC_BINARY_OP(op, errorMsg)                                          \
   do {                                                                         \
-    CHECK_NUMBER_OR_BOOLEAN(errorMsg)                                          \
-    if (peek(vm, 0).type == VAL_NUMBER) {                                      \
-      long b = (long)pop(vm).as.number;                                        \
-      long a = (long)pop(vm).as.number;                                        \
-      push(vm, NUMBER_VAL((double)(a op b)));                                  \
-    } else {                                                                   \
-      bool b = pop(vm).as.boolean;                                             \
-      bool a = pop(vm).as.boolean;                                             \
-      push(vm, BOOL_VAL(a op b));                                              \
+    Value a = pop(vm);                                                         \
+    Value b = pop(vm);                                                         \
+    if (CONVRES_ERROR == convertValues(vm, &a, &b, BINARY_OP_PRIORITIES) ||    \
+        a.type == VAL_NULL) {                                                  \
+      runtimeError(errorMsg);                                                  \
+      return INTERPRET_RUNTIME_ERROR;                                          \
     }                                                                          \
+    if (a.type == VAL_NUMBER)                                                  \
+      push(vm, NUMBER_VAL((double)((long)a.as.number op(long) b.as.number)));  \
+    else if (a.type == VAL_BOOL)                                               \
+      push(vm, NUMBER_VAL(a.as.boolean op b.as.boolean));                      \
   } while (false)
 
 #define CHECK_TYPE(value, valueType, errorMsg)                                 \
   do {                                                                         \
     if (value.type != valueType) {                                             \
+      runtimeError(errorMsg);                                                  \
+      return INTERPRET_RUNTIME_ERROR;                                          \
+    }                                                                          \
+  } while (false)
+#define POP_NUMBER() convertValue(vm, pop(vm), CONV_NUMBER)
+#define CHECK_NUMBER(value, errorMsg)                                          \
+  do {                                                                         \
+    if (value.type == VAL_NULL) {                                              \
       runtimeError(errorMsg);                                                  \
       return INTERPRET_RUNTIME_ERROR;                                          \
     }                                                                          \
@@ -442,7 +440,7 @@ static InterpretResult run(VM *vm) {
     case OP_ADD:  {
       Value b = pop(vm);
       Value a = pop(vm);
-      if (-1 == convertValues(vm, &a, &b, ADDITION_PRIORITIES))
+      if (CONVRES_ERROR == convertValues(vm, &a, &b, ADDITION_PRIORITIES))
         return INTERPRET_RUNTIME_ERROR;
       if (IS_STRING(a)) {
         concatenate(vm, a, b);
@@ -463,45 +461,46 @@ static InterpretResult run(VM *vm) {
       BINARY_OP(*, NUMBER_VAL, "Can only multiply two numbers.");
       break;
     case OP_DIVIDE: {
-      if (peek(vm, 0).type == VAL_NUMBER && peek(vm, 0).as.number == 0.0f) {
+      Value b = POP_NUMBER();
+      CHECK_NUMBER(b, "The divisor of a division must be a number.");
+      Value a = POP_NUMBER();
+      CHECK_NUMBER(a, "The dividend of a division must be a number.");
+      if (b.as.number == 0.0) {
         runtimeError("Cannot divide by zero.");
         return INTERPRET_RUNTIME_ERROR;
       }
-      BINARY_OP(/, NUMBER_VAL, "Can only divide two numbers.");
+      push(vm, NUMBER_VAL(a.as.number / b.as.number));
       break;
     }
     case OP_MODULO: {
-      CHECK_NUMBERS("Can only get the modulo of two numbers.")
-      double b = pop(vm).as.number;
-      double a = pop(vm).as.number;
-      push(vm, NUMBER_VAL(fmod(a, b)));
+      Value b = POP_NUMBER();
+      CHECK_NUMBER(b, "The divisor of a modulo must be a number.");
+      Value a = POP_NUMBER();
+      CHECK_NUMBER(a, "The dividend of a modulo must be a number.");
+      push(vm, NUMBER_VAL(fmod(a.as.number, b.as.number)));
       break;
     }
     case OP_NEGATE: UNARY_OP(-, "Can only negate numbers."); break;
     case OP_POWER:  {
-      CHECK_NUMBERS("Can only raise a number to the power of another number.")
-      double b = pop(vm).as.number;
-      double a = pop(vm).as.number;
-      push(vm, NUMBER_VAL(pow(a, b)));
+      Value b = POP_NUMBER();
+      CHECK_NUMBER(b, "The exponent of an exponentiation must be a number.");
+      Value a = POP_NUMBER();
+      CHECK_NUMBER(a, "The base of an exponentiation must be a number.");
+      push(vm, NUMBER_VAL(pow(a.as.number, b.as.number)));
       break;
     }
-    case OP_AND:
-      INT_BINARY_OP(&, "Can only bitwise and two numbers or two booleans.");
-      break;
+    case OP_AND: LOGIC_BINARY_OP(&, "Can only and numbers or booleans."); break;
     case OP_NOT: {
-      if (peek(vm, 0).type != VAL_BOOL) {
+      Value a = convertValue(vm, pop(vm), CONV_BOOL);
+      if (a.type != VAL_BOOL) {
         runtimeError("Can only not a boolean.");
         return INTERPRET_RUNTIME_ERROR;
       }
       (*(vm->stackTop - 1)).as.boolean = !(*(vm->stackTop - 1)).as.boolean;
       break;
     }
-    case OP_OR:
-      INT_BINARY_OP(|, "Can only bitwise or two numbers or two booleans.");
-      break;
-    case OP_XOR:
-      INT_BINARY_OP(^, "Can only bitwise xor two numbers or two booleans.");
-      break;
+    case OP_OR:  LOGIC_BINARY_OP(|, "Can only or numbers or booleans."); break;
+    case OP_XOR: LOGIC_BINARY_OP(^, "Can only xor numbers or booleans."); break;
 
     case OP_EQUALS: {
       Value b = pop(vm);
@@ -540,16 +539,14 @@ static InterpretResult run(VM *vm) {
       BINARY_OP(>=, BOOL_VAL, "Can only compare two numbers.");
       break;
     case OP_AND_AND: {
-      CHECK_BOOLEANS("Can only logic and two booleans")
-      bool b = pop(vm).as.boolean;
-      bool a = pop(vm).as.boolean;
+      bool b = isTruthy(pop(vm));
+      bool a = isTruthy(pop(vm));
       push(vm, BOOL_VAL(a && b));
       break;
     }
     case OP_OR_OR: {
-      CHECK_BOOLEANS("Can only logic and two booleans")
-      bool b = pop(vm).as.boolean;
-      bool a = pop(vm).as.boolean;
+      bool b = isTruthy(pop(vm));
+      bool a = isTruthy(pop(vm));
       push(vm, BOOL_VAL(a || b));
     }
 
@@ -587,11 +584,10 @@ static InterpretResult run(VM *vm) {
 #undef READ_CONSTANT_8
 #undef READ_CONSTANT_16
 #undef BINARY_OP
-#undef INT_BINARY_OP
-#undef CHECK_NUMBERS
-#undef CHECK_BOOLEANS
-#undef CHECK_NUMBER_OR_BOOLEAN
+#undef LOGIC_BINARY_OP
 #undef UNARY_OP
+#undef POP_NUMBER
+#undef CHECK_NUMBER
 }
 
 InterpretResult interpret(VM *vm, ObjFunction *function) {
