@@ -102,7 +102,6 @@ static int isTruthy(Value value) {
 
 static bool canConvert(Value value, ConversionType desiredType) {
   if ((desiredType == valToConvType(value.type)) ||
-      desiredType == CONV_STRING ||
       (valToConvType(value.type) == CONV_OBJECT &&
        objToConvType(value.as.object->type) == desiredType))
     return true;
@@ -113,8 +112,20 @@ static bool canConvert(Value value, ConversionType desiredType) {
     return (desiredType == CONV_NUMBER || desiredType == CONV_STRING);
   case VAL_NUMBER:
     return (desiredType == CONV_BOOL || desiredType == CONV_STRING);
-  case VAL_OBJECT:
-    return (desiredType == CONV_BOOL || desiredType == CONV_NUMBER);
+  case VAL_OBJECT: {
+    switch (value.as.object->type) {
+    case OBJ_FUNCTION: return desiredType == CONV_STRING;
+    case OBJ_STRING:   {
+      if (desiredType == CONV_NUMBER) {
+        char *endPtr;
+        ObjString *str = AS_OBJ_STRING(value);
+        strtod(str->chars, &endPtr);
+        return endPtr == str->chars + str->length;
+      }
+      return desiredType == CONV_BOOL;
+    }
+    }
+  }
   }
   return false;
 }
@@ -236,8 +247,19 @@ static int convertValues(VM *vm, Value *a, Value *b, bool prioritiseStrings) {
   }
 
   if (a->type == VAL_NULL || b->type == VAL_NULL) {
-    runtimeError("Cannot convert null values.");
+    runtimeError("Cannot convert 'null' values.");
     return -1;
+  }
+
+  if (a->type == VAL_BOOL || b->type == VAL_BOOL) {
+    Value *toConvert = a->type == VAL_BOOL ? b : a;
+    if (!canConvert(*toConvert, CONV_BOOL)) {
+      runtimeError("Cannot convert '%s' to 'bool'.",
+                   ValueTypeNames[toConvert->type]);
+      return -1;
+    }
+    *toConvert = convertValue(vm, *toConvert, CONV_BOOL);
+    return 0;
   }
 
   if (prioritiseStrings) {
