@@ -15,7 +15,10 @@
 #include "vm.h"
 
 typedef enum { EQ_NOT_EQUAL, EQ_EQUAL, EQ_ERROR } Equality;
-typedef enum { CONVRES_OK, CONVRES_NOT_FOUND, CONVRES_ERROR } ConversionResult;
+typedef enum { CONVRES_OK = 0, CONVRES_ERROR = -1 } ConversionResult;
+
+#define CONVTYPE_COUNT 4 // null, bool, number, string
+
 typedef enum {
   CONV_OBJECT,
   CONV_NULL,
@@ -26,7 +29,14 @@ typedef enum {
   CONV_ERROR,
 } ConversionType;
 
-const char ValueTypeNames[4][8] = {
+const ConversionType EQUALITY_PRIORITIES[CONVTYPE_COUNT] = {
+    CONV_BOOL, CONV_NUMBER, CONV_STRING, CONV_NULL};
+const ConversionType ADDITION_PRIORITIES[CONVTYPE_COUNT] = {
+    CONV_STRING, CONV_NUMBER, CONV_BOOL, CONV_NULL};
+const ConversionType BINARY_OP_PRIORITIES[CONVTYPE_COUNT] = {
+    CONV_NUMBER, CONV_BOOL, CONV_STRING, CONV_NULL};
+
+const char VALUE_TYPE_NAMES[4][8] = {
     [VAL_NULL] = "null",
     [VAL_BOOL] = "bool",
     [VAL_NUMBER] = "number",
@@ -94,10 +104,12 @@ static int isTruthy(Value value) {
   case VAL_NULL:   return false;
   case VAL_OBJECT: {
     switch (value.as.object->type) {
-    case OBJ_STRING: return AS_OBJ_STRING(value)->length == 1;
+    case OBJ_STRING:   return AS_OBJ_STRING(value)->length > 0;
+    case OBJ_FUNCTION: return true;
     }
   }
   }
+  return false;
 }
 
 static bool canConvert(Value value, ConversionType desiredType) {
@@ -105,7 +117,7 @@ static bool canConvert(Value value, ConversionType desiredType) {
       (valToConvType(value.type) == CONV_OBJECT &&
        objToConvType(value.as.object->type) == desiredType))
     return true;
-  if (value.type == VAL_NULL || desiredType == CONV_NULL) return false;
+  if (value.type == VAL_NULL) return desiredType == CONV_STRING;
 
   switch (value.type) {
   case VAL_BOOL:
@@ -178,8 +190,9 @@ static Value convertValue(VM *vm, Value value, ConversionType desiredType) {
     // Convert string
     ObjString *string = AS_OBJ_STRING(value);
 
-    if (desiredType == CONV_BOOL) return BOOL_VAL(string->length > 1);
+    if (desiredType == CONV_BOOL) return BOOL_VAL(isTruthy(value));
     if (desiredType == CONV_NUMBER) {
+      if (string->length == 1) return NUMBER_VAL(0.0);
       char *endptr = NULL;
       double num = strtod(string->chars, &endptr);
       return NUMBER_VAL(num);
@@ -188,99 +201,79 @@ static Value convertValue(VM *vm, Value value, ConversionType desiredType) {
   }
   }
 
-  runtimeError("Cannot convert '%s' to '%s'.", ValueTypeNames[value.type],
-               ValueTypeNames[convToValueType(desiredType)]);
+  runtimeError("Cannot convert '%s' to '%s'.", VALUE_TYPE_NAMES[value.type],
+               VALUE_TYPE_NAMES[convToValueType(desiredType)]);
   return NULL_VAL;
 }
 
-static ConversionResult tryConvertToString(VM *vm, Value *a, Value *b) {
-  if (IS_STRING(*a)) {
-    if (!canConvert(*b, CONV_STRING)) {
-      runtimeError("Cannot convert '%s' to a string.", ValueTypeNames[b->type]);
-      return CONVRES_ERROR;
-    }
-    *b = convertValue(vm, *b, CONV_STRING);
-    return CONVRES_OK;
-  }
-  if (IS_STRING(*b)) {
-    if (!canConvert(*a, CONV_STRING)) {
-      runtimeError("Cannot convert '%s' to a string.", ValueTypeNames[a->type]);
-      return CONVRES_ERROR;
-    }
-    *a = convertValue(vm, *a, CONV_STRING);
-    return CONVRES_OK;
-  }
-  return CONVRES_NOT_FOUND;
-}
-
-static ConversionResult tryConvertToNumber(VM *vm, Value *a, Value *b) {
-  if (a->type == VAL_NUMBER) {
-    if (!canConvert(*b, CONV_NUMBER)) {
-      runtimeError("Cannot convert '%s' to a number.", ValueTypeNames[b->type]);
-      return CONVRES_ERROR;
-    }
-    *b = convertValue(vm, *b, CONV_NUMBER);
-    return CONVRES_OK;
-  }
-  if (b->type == VAL_NUMBER) {
-    if (!canConvert(*a, CONV_NUMBER)) {
-      runtimeError("Cannot convert '%s' to a number.", ValueTypeNames[a->type]);
-      return CONVRES_ERROR;
-    }
-    *a = convertValue(vm, *a, CONV_NUMBER);
-    return CONVRES_OK;
-  }
-  return CONVRES_NOT_FOUND;
-}
-
-static int convertValues(VM *vm, Value *a, Value *b, bool prioritiseStrings) {
+static ConversionResult
+convertValues(VM *vm, Value *a, Value *b,
+              const ConversionType priorities[CONVTYPE_COUNT]) {
   if ((a->type == b->type) &&
       (a->type != VAL_OBJECT || AS_OBJ(*a)->type == AS_OBJ(*b)->type))
-    return 0;
+    return CONVRES_OK;
 
-  if (prioritiseStrings) {
-    ConversionResult result = tryConvertToString(vm, a, b);
-    if (result != 1) return result;
-  } else {
-    ConversionResult result = tryConvertToNumber(vm, a, b);
-    if (result != 1) return result;
-  }
-
-  if (a->type == VAL_NULL || b->type == VAL_NULL) {
-    runtimeError("Cannot convert 'null' values.");
-    return -1;
-  }
-
-  if (a->type == VAL_BOOL || b->type == VAL_BOOL) {
-    Value *toConvert = a->type == VAL_BOOL ? b : a;
-    if (!canConvert(*toConvert, CONV_BOOL)) {
-      runtimeError("Cannot convert '%s' to 'bool'.",
-                   ValueTypeNames[toConvert->type]);
-      return -1;
+  for (int i = 0; i < CONVTYPE_COUNT; i++) {
+    switch (priorities[i]) {
+    case CONV_NULL: {
+      if (a->type == VAL_NULL || b->type == VAL_NULL) {
+        runtimeError("Cannot operate on 'null' values.");
+        return CONVRES_ERROR;
+      }
+      continue;
     }
-    *toConvert = convertValue(vm, *toConvert, CONV_BOOL);
-    return 0;
+    case CONV_BOOL: {
+      if (a->type == VAL_BOOL || b->type == VAL_BOOL) {
+        Value *toConvert = a->type == VAL_BOOL ? b : a;
+        if (!canConvert(*toConvert, CONV_BOOL)) {
+          runtimeError("Cannot convert '%s' to 'bool'.",
+                       VALUE_TYPE_NAMES[toConvert->type]);
+          return CONVRES_ERROR;
+        }
+        *toConvert = convertValue(vm, *toConvert, CONV_BOOL);
+        return CONVRES_OK;
+      }
+      continue;
+    }
+    case CONV_NUMBER: {
+      if (a->type == VAL_NUMBER || b->type == VAL_NUMBER) {
+        Value *toConvert = a->type == VAL_NUMBER ? b : a;
+        if (!canConvert(*toConvert, CONV_NUMBER)) {
+          runtimeError("Cannot convert '%s' to a number.",
+                       VALUE_TYPE_NAMES[toConvert->type]);
+          return CONVRES_ERROR;
+        }
+        *toConvert = convertValue(vm, *toConvert, CONV_NUMBER);
+        return CONVRES_OK;
+      }
+      continue;
+    }
+    case CONV_STRING: {
+      if (IS_STRING(*a) || IS_STRING(*b)) {
+        Value *toConvert = IS_STRING(*a) ? b : a;
+        if (!canConvert(*toConvert, CONV_STRING)) {
+          runtimeError("Cannot convert '%s' to a string.",
+                       VALUE_TYPE_NAMES[toConvert->type]);
+          return CONVRES_ERROR;
+        }
+        *toConvert = convertValue(vm, *toConvert, CONV_STRING);
+        return CONVRES_OK;
+      }
+      continue;
+    }
+    }
   }
-
-  if (prioritiseStrings) {
-    ConversionResult result = tryConvertToNumber(vm, a, b);
-    if (result != 1) return result;
-  } else {
-    ConversionResult result = tryConvertToString(vm, a, b);
-    if (result != 1) return result;
-  }
-
   // If we have neither two of the same type, a string and something else or a
   // number and a num/bool, we cannot convert them.
-  return -1;
+  return CONVRES_ERROR;
 }
 
 static Equality isEqual(VM *vm, Value a, Value b) {
-  if (-1 == convertValues(vm, &a, &b, false)) {
-    runtimeError("Failed comparing for equality.");
+  if (-1 == convertValues(vm, &a, &b, EQUALITY_PRIORITIES)) {
     return EQ_ERROR;
   }
   switch (a.type) {
+  case VAL_NULL: return a.type == b.type;
   case VAL_BOOL: return a.as.boolean == b.as.boolean ? EQ_EQUAL : EQ_NOT_EQUAL;
   case VAL_NUMBER: return a.as.number == b.as.number ? EQ_EQUAL : EQ_NOT_EQUAL;
   case VAL_OBJECT: {
@@ -290,7 +283,7 @@ static Equality isEqual(VM *vm, Value a, Value b) {
     }
     ObjString *bStr = AS_OBJ_STRING(b);
     ObjString *aStr = AS_OBJ_STRING(a);
-    return (aStr->hash != bStr->hash || aStr->length != bStr->length ||
+    return (aStr->hash == bStr->hash && aStr->length == bStr->length &&
             0 == memcmp(aStr->chars, bStr->chars, aStr->length))
                ? EQ_EQUAL
                : EQ_NOT_EQUAL;
@@ -449,7 +442,8 @@ static InterpretResult run(VM *vm) {
     case OP_ADD:  {
       Value b = pop(vm);
       Value a = pop(vm);
-      if (-1 == convertValues(vm, &a, &b, true)) return INTERPRET_RUNTIME_ERROR;
+      if (-1 == convertValues(vm, &a, &b, ADDITION_PRIORITIES))
+        return INTERPRET_RUNTIME_ERROR;
       if (IS_STRING(a)) {
         concatenate(vm, a, b);
       } else if (a.type == VAL_NUMBER) {
