@@ -56,9 +56,7 @@ static ConversionType objToConvType(ObjType type) {
   switch (type) {
   case OBJ_STRING:   return CONV_STRING;
   case OBJ_FUNCTION: return CONV_FUNCTION;
-  default:
-    runtimeError("Tried to convert a function to another type.");
-    return CONV_ERROR;
+  default:           return CONV_ERROR;
   }
 }
 
@@ -75,6 +73,10 @@ void initVM(Parser *parser, VM *vm) {
   vm->globals = initTable();
   vm->localCount = 0;
   resetStack(vm);
+
+  for (Pin p = PIN_D0; p < PIN_COUNT; p++) {
+    vm->pinModes[p] = PINMODE_INPUT;
+  }
 }
 
 void freeVM(VM *vm) {
@@ -185,13 +187,17 @@ static Value convertValue(VM *vm, Value value, ConversionType desiredType) {
       if (string->length == 0) return NUMBER_VAL(0.0);
       char *endptr = NULL;
       double num = strtod(string->chars, &endptr);
+      if (endptr != string->chars + string->length) {
+        runtimeError(vm, "Failed to completely convert string to number.");
+        return NULL_VAL;
+      }
       return NUMBER_VAL(num);
     }
     break;
   }
   }
 
-  runtimeError("Cannot convert '%s' to '%s'.", VALUE_TYPE_NAMES[value.type],
+  runtimeError(vm, "Cannot convert '%s' to '%s'.", VALUE_TYPE_NAMES[value.type],
                VALUE_TYPE_NAMES[convToValueType(desiredType)]);
   return NULL_VAL;
 }
@@ -207,7 +213,7 @@ convertValues(VM *vm, Value *a, Value *b,
     switch (priorities[i]) {
     case CONV_NULL: {
       if (a->type == VAL_NULL || b->type == VAL_NULL) {
-        runtimeError("Cannot operate on 'null' values.");
+        runtimeError(vm, "Cannot operate on 'null' values.");
         return CONVRES_ERROR;
       }
       continue;
@@ -216,7 +222,7 @@ convertValues(VM *vm, Value *a, Value *b,
       if (a->type == VAL_BOOL || b->type == VAL_BOOL) {
         Value *toConvert = a->type == VAL_BOOL ? b : a;
         if (!canConvert(*toConvert, CONV_BOOL)) {
-          runtimeError("Cannot convert '%s' to 'bool'.",
+          runtimeError(vm, "Cannot convert '%s' to 'bool'.",
                        VALUE_TYPE_NAMES[toConvert->type]);
           return CONVRES_ERROR;
         }
@@ -229,7 +235,7 @@ convertValues(VM *vm, Value *a, Value *b,
       if (a->type == VAL_NUMBER || b->type == VAL_NUMBER) {
         Value *toConvert = a->type == VAL_NUMBER ? b : a;
         if (!canConvert(*toConvert, CONV_NUMBER)) {
-          runtimeError("Cannot convert '%s' to a number.",
+          runtimeError(vm, "Cannot convert '%s' to a number.",
                        VALUE_TYPE_NAMES[toConvert->type]);
           return CONVRES_ERROR;
         }
@@ -242,7 +248,7 @@ convertValues(VM *vm, Value *a, Value *b,
       if (IS_STRING(*a) || IS_STRING(*b)) {
         Value *toConvert = IS_STRING(*a) ? b : a;
         if (!canConvert(*toConvert, CONV_STRING)) {
-          runtimeError("Cannot convert '%s' to a string.",
+          runtimeError(vm, "Cannot convert '%s' to a string.",
                        VALUE_TYPE_NAMES[toConvert->type]);
           return CONVRES_ERROR;
         }
@@ -268,7 +274,7 @@ static Equality isEqual(VM *vm, Value a, Value b) {
   case VAL_NUMBER: return a.as.number == b.as.number ? EQ_EQUAL : EQ_NOT_EQUAL;
   case VAL_OBJECT: {
     if (!IS_STRING(a) || !IS_STRING(b)) {
-      runtimeError("Can only compare two string objects with eachother.");
+      runtimeError(vm, "Can only compare two string objects with eachother.");
       return EQ_ERROR;
     }
     ObjString *bStr = AS_OBJ_STRING(b);
@@ -309,26 +315,26 @@ static InterpretResult run(VM *vm) {
     Value b = convertValue(vm, pop(vm), CONV_NUMBER);                          \
     Value a = convertValue(vm, pop(vm), CONV_NUMBER);                          \
     if (a.type == VAL_NULL || b.type == VAL_NULL) {                            \
-      runtimeError(errorMsg);                                                  \
+      runtimeError(vm, errorMsg);                                              \
       return INTERPRET_RUNTIME_ERROR;                                          \
     }                                                                          \
     push(vm, resultMacro(a.as.number op b.as.number));                         \
   } while (false)
-#define UNARY_OP(op, errorMsg)                                                 \
+#define UNARY_OP(op, desiredType, valueMacro, valueField, errorMsg)            \
   do {                                                                         \
-    Value a = convertValue(vm, pop(vm), CONV_NUMBER);                          \
-    if (a.type != VAL_NUMBER) {                                                \
-      runtimeError(errorMsg);                                                  \
+    Value a = convertValue(vm, *(vm->stackTop - 1), desiredType);              \
+    if (a.type != convToValueType(desiredType)) {                              \
+      runtimeError(vm, errorMsg);                                              \
       return INTERPRET_RUNTIME_ERROR;                                          \
     }                                                                          \
-    (*(vm->stackTop - 1)).as.number = op(*(vm->stackTop - 1)).as.number;       \
+    *(vm->stackTop - 1) = valueMacro(op(a.as.valueField));                     \
   } while (false)
 #define LOGIC_BINARY_OP(op, resultMacro, errorMsg)                             \
   do {                                                                         \
     Value b = convertValue(vm, pop(vm), CONV_NUMBER);                          \
     Value a = convertValue(vm, pop(vm), CONV_NUMBER);                          \
     if (a.type == VAL_NULL || b.type == VAL_NULL) {                            \
-      runtimeError(errorMsg);                                                  \
+      runtimeError(vm, errorMsg);                                              \
       return INTERPRET_RUNTIME_ERROR;                                          \
     }                                                                          \
     push(vm, resultMacro((double)(((long)a.as.number)op((long)b.as.number)))); \
@@ -337,7 +343,7 @@ static InterpretResult run(VM *vm) {
 #define CHECK_TYPE(value, valueType, errorMsg)                                 \
   do {                                                                         \
     if (value.type != valueType) {                                             \
-      runtimeError(errorMsg);                                                  \
+      runtimeError(vm, errorMsg);                                              \
       return INTERPRET_RUNTIME_ERROR;                                          \
     }                                                                          \
   } while (false)
@@ -345,7 +351,7 @@ static InterpretResult run(VM *vm) {
 #define CHECK_NUMBER(value, errorMsg)                                          \
   do {                                                                         \
     if (value.type == VAL_NULL) {                                              \
-      runtimeError(errorMsg);                                                  \
+      runtimeError(vm, errorMsg);                                              \
       return INTERPRET_RUNTIME_ERROR;                                          \
     }                                                                          \
   } while (false)
@@ -386,7 +392,7 @@ static InterpretResult run(VM *vm) {
       Value identifierName = READ_CONSTANT_8();
       Value val;
       if (!tableGet(&vm->globals, AS_OBJ_STRING(identifierName), &val)) {
-        runtimeError("Cannot access an undeclared variable.");
+        runtimeError(vm, "Cannot access an undeclared variable.");
         return INTERPRET_RUNTIME_ERROR;
       }
       push(vm, val);
@@ -440,7 +446,7 @@ static InterpretResult run(VM *vm) {
       } else if (a.type == VAL_BOOL) {
         push(vm, NUMBER_VAL((double)(a.as.boolean + b.as.boolean)));
       } else {
-        runtimeError("Operands must be two numbers or two strings.");
+        runtimeError(vm, "Operands must be two numbers or two strings.");
         return INTERPRET_RUNTIME_ERROR;
       }
       break;
@@ -457,7 +463,7 @@ static InterpretResult run(VM *vm) {
       Value a = POP_NUMBER();
       CHECK_NUMBER(a, "The dividend of a division must be a number.");
       if (b.as.number == 0.0) {
-        runtimeError("Cannot divide by zero.");
+        runtimeError(vm, "Cannot divide by zero.");
         return INTERPRET_RUNTIME_ERROR;
       }
       push(vm, NUMBER_VAL(a.as.number / b.as.number));
@@ -471,8 +477,10 @@ static InterpretResult run(VM *vm) {
       push(vm, NUMBER_VAL(fmod(a.as.number, b.as.number)));
       break;
     }
-    case OP_NEGATE: UNARY_OP(-, "Can only negate numbers."); break;
-    case OP_POWER:  {
+    case OP_NEGATE:
+      UNARY_OP(-, CONV_NUMBER, NUMBER_VAL, number, "Can only negate numbers.");
+      break;
+    case OP_POWER: {
       Value b = POP_NUMBER();
       CHECK_NUMBER(b, "The exponent of an exponentiation must be a number.");
       Value a = POP_NUMBER();
@@ -483,15 +491,9 @@ static InterpretResult run(VM *vm) {
     case OP_AND:
       LOGIC_BINARY_OP(&, NUMBER_VAL, "Can only and numbers or booleans.");
       break;
-    case OP_NOT: {
-      Value a = convertValue(vm, pop(vm), CONV_BOOL);
-      if (a.type != VAL_BOOL) {
-        runtimeError("Can only not a boolean.");
-        return INTERPRET_RUNTIME_ERROR;
-      }
-      (*(vm->stackTop - 1)).as.boolean = !(*(vm->stackTop - 1)).as.boolean;
+    case OP_NOT:
+      UNARY_OP(!, CONV_BOOL, BOOL_VAL, boolean, "Can only not booleans.");
       break;
-    }
     case OP_OR:
       LOGIC_BINARY_OP(|, NUMBER_VAL, "Can only or numbers or booleans.");
       break;
@@ -549,20 +551,26 @@ static InterpretResult run(VM *vm) {
 
     // Arduino operations
     case OP_SETPIN: {
-      Value value = pop(vm);
-      Value pin = pop(vm);
-
-      if (value.type != VAL_BOOL && value.type != VAL_NUMBER) {
-        runtimeError("Can only set pins to HIGH/LOW (or 1/0).");
-        return INTERPRET_RUNTIME_ERROR;
-      }
-      CHECK_TYPE(pin, VAL_NUMBER, "Can only write to valid pin numbers.");
-      if ((int)pin.as.number > 13 || (int)pin.as.number < 0) {
-        runtimeError("Invalid pin number '%d'.", (int)pin.as.number);
+      Value valueVal = convertValue(vm, pop(vm), CONV_BOOL);
+      Value pinVal = convertValue(vm, pop(vm), CONV_NUMBER);
+      CHECK_TYPE(valueVal, VAL_BOOL,
+                 "Can only set pin to HIGH/LOW (true/false).");
+      CHECK_NUMBER(pinVal, "A pin must be a number between (0-13) / A(0-5).");
+      if ((int)pinVal.as.number >= PIN_COUNT || (int)pinVal.as.number < 0) {
+        runtimeError(vm, "Invalid pin number '%d'.", (int)pinVal.as.number);
         return INTERPRET_RUNTIME_ERROR;
       }
 
-      printf("Setting pin %d to %f\n", (int)pin.as.number, value.as.boolean);
+      Pin pin = (Pin)pinVal.as.number;
+      bool value = valueVal.as.boolean;
+
+      // Check if the pin to be set is already output
+      if (vm->pinModes[pin] == PINMODE_INPUT) {
+        printf("Setting pin %d to OUTPUT.\n", pin);
+        vm->pinModes[pin] = PINMODE_OUTPUT;
+      }
+
+      printf("Setting pin %d to %s\n", pin, value ? "HIGH" : "LOW");
       break;
     }
     case OP_PINMODE: {
@@ -572,7 +580,7 @@ static InterpretResult run(VM *vm) {
     }
 
     case OP_ERROR: continue;
-    default:       runtimeError("Unknown opcode."); break;
+    default:       runtimeError(vm, "Unknown opcode."); break;
     }
   }
 

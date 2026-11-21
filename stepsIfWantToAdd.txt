@@ -1,0 +1,8 @@
+adding new Value type (normal, not object):
+- value.h: 
+  - add ValueType
+  - add value to union
+  - make VALUE_VAL macro
+- debug.c: 
+  - add value conversion to converstInstruction()
+  - add value printing to printValue()

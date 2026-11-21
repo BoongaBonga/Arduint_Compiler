@@ -60,6 +60,7 @@ typedef enum {
 struct Chunk {
   Vector constants; // Values
   Vector byteCode;  // uint8_ts
+  Vector lines;     // int's for line information
 };
 typedef struct Chunk Chunk;
 
@@ -81,6 +82,14 @@ static inline uint16_t writeConstant(Chunk *chunk, Value constant) {
 
 static inline Value *getConstant(Chunk *chunk, int index) {
   return (Value *)vecGet(&chunk->constants, index);
+}
+
+static inline void pushLine(Chunk *chunk, int line) {
+  vecPush(&chunk->lines, &line);
+}
+
+static inline int getLine(Chunk *chunk, int index) {
+  return *(int *)vecGet(&chunk->lines, index);
 }
 
 #endif

@@ -8,6 +8,10 @@
 #define FRAMES_MAX 64
 #define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
 
+#define PIN_COUNT 20
+#define LOW 0
+#define HIGH 1
+
 typedef enum {
   CONV_OBJECT,
   CONV_NULL,
@@ -30,7 +34,31 @@ typedef enum {
   INTERPRET_RUNTIME_ERROR
 } InterpretResult;
 
-typedef struct {
+typedef enum { PINMODE_INPUT, PINMODE_OUTPUT } PinMode;
+typedef enum {
+  PIN_D0,
+  PIN_D1,
+  PIN_D2,
+  PIN_D3,
+  PIN_D4,
+  PIN_D5,
+  PIN_D6,
+  PIN_D7,
+  PIN_D8,
+  PIN_D9,
+  PIN_D10,
+  PIN_D11,
+  PIN_D12,
+  PIN_D13,
+  PIN_A0,
+  PIN_A1,
+  PIN_A2,
+  PIN_A3,
+  PIN_A4,
+  PIN_A5
+} Pin;
+
+typedef struct VM {
   CallFrame frames[FRAMES_MAX];
   int frameCount;
 
@@ -40,6 +68,8 @@ typedef struct {
   Table globals;
   Value locals[UINT8_COUNT];
   int localCount;
+
+  PinMode pinModes[PIN_COUNT];
 
   Object *objects;
 

@@ -104,6 +104,14 @@ static Token *previous(Parser *parser) {
   return vecGet(parser->tokens, parser->currentIndex - 1);
 }
 
+static Token *previousNonNewline(Parser *parser) {
+  for (int i = parser->currentIndex - 1; i >= 0; i--) {
+    Token *token = vecGet(parser->tokens, i);
+    if (token->type != TOKEN_NEWLINE) return token;
+  }
+  return peek(parser);
+}
+
 static Token *peekBehind(Parser *parser, int offset) {
   if (parser->currentIndex - offset < 0) return NULL;
   return vecGet(parser->tokens, parser->currentIndex - offset);
@@ -168,10 +176,14 @@ static void skipToNewline(Parser *parser) {
 
 static void emitOp(Parser *parser, OpCode op) {
   writeOperation(currentChunk(parser), (uint8_t)op);
+  pushLine(currentChunk(parser), previousNonNewline(parser)->line);
 }
 static void emitOps(Parser *parser, OpCode op1, OpCode op2) {
   writeOperation(currentChunk(parser), op1);
   writeOperation(currentChunk(parser), op2);
+  int line = previousNonNewline(parser)->line;
+  pushLine(currentChunk(parser), line);
+  pushLine(currentChunk(parser), line);
 }
 
 static void emitLoop(Parser *parser, int loopStart, Token *loopToken) {

@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 #include "token.h"
+#include "vm.h"
 
 void defaultError(const char *message, ...) {
   va_list args;
@@ -53,17 +54,16 @@ void customError(int startLine, int startOffset, int endLine, int endOffset,
   va_end(args);
 }
 
-void runtimeError(const char *message, ...) {
+void runtimeError(VM *vm, const char *message, ...) {
   va_list args;
   va_start(args, message);
 
-  /* for when we added line-info
-  CallFrame* frame = &vm.frames[vm.frameCount - 1];
-  size_t instruction = frame->ip - frame->function->chunk.code - 1;
-  int line = frame->function->chunk.lines[instruction];
-  */
+  CallFrame *frame = &vm->frames[vm->frameCount - 1];
+  size_t instruction =
+      frame->ip - (uint8_t *)frame->function->chunk->byteCode.arr - 1;
+  int line = getLine(frame->function->chunk, instruction);
 
-  fprintf(stderr, "(RuntimeError) [Error]: ");
+  fprintf(stderr, "(%d-?:%d-?) [Error]: ", line, line);
   vfprintf(stderr, message, args);
   fprintf(stderr, "\n");
   va_end(args);

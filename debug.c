@@ -207,6 +207,7 @@ static int convertInstruction(Chunk *chunk, int offset) {
   case CONV_NUMBER:   printf("NUMBER\n"); break;
   case CONV_STRING:   printf("STRING\n"); break;
   case CONV_FUNCTION: printf("FUNCTION\n"); break;
+  default:            printf("Unknown conversion target"); break;
   }
   return offset + 2;
 }
@@ -226,8 +227,14 @@ static int jumpInstruction(const char *name, int sign, Chunk *chunk,
   return offset + 3;
 }
 
+int lastLine = 0;
 int printInstruction(Chunk *chunk, int offset) {
-  printf("%04d ", offset);
+  int line = getLine(chunk, offset);
+  if (line != lastLine) {
+    printf("%4d %04d ", lastLine = line, offset);
+  } else {
+    printf("   | %04d ", lastLine = line, offset);
+  }
 
   uint8_t instruction = *(uint8_t *)vecGet(&chunk->byteCode, offset);
 
@@ -281,6 +288,8 @@ int printInstruction(Chunk *chunk, int offset) {
   case OP_LESS_OR_EQUAL: return simpleInstruction("OP_LESS_OR_EQUAL", offset);
   case OP_AND_AND:       return simpleInstruction("OP_AND_AND", offset);
   case OP_OR_OR:         return simpleInstruction("OP_OR_OR", offset);
+  case OP_SETPIN:        return simpleInstruction("OP_SETPIN", offset);
+  case OP_PINMODE:       return simpleInstruction("OP_PINMODE", offset);
   default: defaultError("Unknown opCode %d.", instruction); return offset + 1;
   }
 }
