@@ -64,12 +64,13 @@ static void initCompiler(Parser *parser, FunctionType type) {
 
 Parser initParser(Vector *tokens) {
   Parser parser;
-  parser.isValidProgram = true;
   parser.currentIndex = 0;
   parser.tokens = tokens;
 
+  parser.isValidProgram = true;
   parser.hadError = false;
   parser.isInLoop = false;
+  parser.needsArduino = false;
 
   parser.stringPool = initTable();
   parser.globalStrings = initTable();
@@ -140,7 +141,7 @@ static void parserErrorState(Parser *parser) {
   parser->hadError = true;
 }
 
-static bool consume(Parser *parser, TokenType expected, Token *errorStart,
+static bool consume(Parser *parser, TokenKind expected, Token *errorStart,
                     const char *message) {
   // Skip newlines
   skipWhiteSpace(parser);
@@ -159,11 +160,11 @@ static bool consume(Parser *parser, TokenType expected, Token *errorStart,
   return false;
 }
 
-static bool check(Parser *parser, TokenType type) {
+static bool check(Parser *parser, TokenKind type) {
   return peek(parser)->type == type;
 }
 
-static bool match(Parser *parser, TokenType expected) {
+static bool match(Parser *parser, TokenKind expected) {
   if (!check(parser, expected)) return false;
   next(parser);
   return true;
@@ -295,7 +296,7 @@ const OpCode tokenOps[79][3] = {
     [TOKEN_OR_OR] = {OP_ERROR, OP_OR_OR, OP_ERROR},
 };
 
-static uint8_t getOp(TokenType type, Position pos) {
+static uint8_t getOp(TokenKind type, Position pos) {
   return tokenOps[type][pos];
 }
 
@@ -459,7 +460,7 @@ static void namedVariable(Parser *parser, Token *name, bool canAssign) {
     expression(parser);
     emitOps(parser, setOperation, (uint8_t)arg);
   } else if (canAssign && isAssignmentToken(peek(parser))) {
-    TokenType op = next(parser)->type;
+    TokenKind op = next(parser)->type;
 
     // Get var -> add expr -> set global
     emitOps(parser, getOperation, (uint8_t)arg);
@@ -470,14 +471,14 @@ static void namedVariable(Parser *parser, Token *name, bool canAssign) {
   } else if (peekBehind(parser, 2)->type == TOKEN_PLUS_PLUS ||
              peekBehind(parser, 2)->type == TOKEN_MINUS_MINUS) {
     // Get var -> add 1 -> set var
-    TokenType op = peekBehind(parser, 2)->type;
+    TokenKind op = peekBehind(parser, 2)->type;
     emitOps(parser, getOperation, (uint8_t)arg);
     emitOps(parser, OP_PUSH_1, getOp(op, PREFIX));
     emitOps(parser, setOperation, (uint8_t)arg);
   } else if (peek(parser)->type == TOKEN_PLUS_PLUS ||
              peek(parser)->type == TOKEN_MINUS_MINUS) {
     // Get var -> add 1 -> set var
-    TokenType op = peek(parser)->type;
+    TokenKind op = peek(parser)->type;
     emitOps(parser, getOperation, (uint8_t)arg);
     emitOps(parser, getOperation, (uint8_t)arg);
     emitOps(parser, OP_PUSH_1, getOp(op, PREFIX));
@@ -555,7 +556,7 @@ static void value(Parser *parser, Token *val) {
   writeConstant(currentChunk(parser), value);
 }
 
-static int infixBindingPower(TokenType op, ReturnSide retRhs) {
+static int infixBindingPower(TokenKind op, ReturnSide retRhs) {
   switch (op) {
   case TOKEN_AND_AND:        return PREC_L_AND * 2 + retRhs;
   case TOKEN_OR_OR:          return PREC_L_OR * 2 + retRhs;
@@ -593,7 +594,7 @@ static int infixBindingPower(TokenType op, ReturnSide retRhs) {
   }
 }
 
-static int prefixBindingPower(TokenType op) {
+static int prefixBindingPower(TokenKind op) {
   switch (op) {
   case TOKEN_MINUS:
   case TOKEN_NOT:
@@ -605,7 +606,7 @@ static int prefixBindingPower(TokenType op) {
   }
 }
 
-static int postfixBindingPower(TokenType op) {
+static int postfixBindingPower(TokenKind op) {
   switch (op) {
   case TOKEN_PLUS_PLUS:
   case TOKEN_MINUS_MINUS: return PREC_POSTFIX * 2 + 1;
@@ -674,7 +675,7 @@ static int prefix(Parser *parser, Token *current, int minBp) {
 }
 
 static int infix(Parser *parser, Token *current, int minBp) {
-  TokenType op = current->type;
+  TokenKind op = current->type;
   switch (op) {
   case TOKEN_AND_AND: {
     int lBindingPower = infixBindingPower(TOKEN_AND_AND, LHS);
@@ -799,7 +800,6 @@ static void block(Parser *parser) {
 
 static void setPinStatement(Parser *parser) {
   next(parser);
-  skipWhiteSpace(parser);
 
   // Parse expression for pin (digital for now)
   expression(parser);
@@ -810,6 +810,29 @@ static void setPinStatement(Parser *parser) {
   expression(parser);
 
   emitOp(parser, OP_SETPIN);
+  parser->needsArduino = true;
+}
+
+static void delayStatement(Parser *parser) {
+  next(parser);
+
+  // parse the delay amount
+  expression(parser);
+
+  // parse the time unit
+  OpCode delayOp;
+  switch (next(parser)->type) {
+  case TOKEN_HOURS:        delayOp = OP_DELAY_H; break;
+  case TOKEN_MINUTES:      delayOp = OP_DELAY_M; break;
+  case TOKEN_SECONDS:      delayOp = OP_DELAY_S; break;
+  case TOKEN_MILLISECONDS: delayOp = OP_DELAY_MS; break;
+  case TOKEN_MICROSECONDS: delayOp = OP_DELAY_MICROS; break;
+  default:
+    errorFromToken(previous(parser),
+                   "Expect time unit after delay amount. (h, m, s, ms, µs)");
+    return;
+  }
+  emitOp(parser, delayOp);
 }
 
 static void printStatement(Parser *parser) {
@@ -1114,8 +1137,7 @@ static void synchronize(Parser *parser) {
     case TOKEN_SETPIN:
     case TOKEN_READPIN:
     case TOKEN_DELAY:
-    case TOKEN_LEFT_SQUIGGLY_BRACKET:
-    case TOKEN_DELAY_MICROS:          return; // Found new statement start
+    case TOKEN_LEFT_SQUIGGLY_BRACKET: return; // Found new statement start
     default:                          next(parser); continue;
     }
   }
@@ -1128,6 +1150,7 @@ static void statement(Parser *parser) {
 
   switch (current->type) {
   case TOKEN_SETPIN:                setPinStatement(parser); break;
+  case TOKEN_DELAY:                 delayStatement(parser); break;
   case TOKEN_PRINT:                 printStatement(parser); break;
   case TOKEN_IF:                    ifStatement(parser); break;
   case TOKEN_SWITCH:                switchStatement(parser); break;

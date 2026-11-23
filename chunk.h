@@ -52,8 +52,12 @@ typedef enum {
   OP_OR_OR,
 
   // Arduino functions
-  OP_SETPIN,  // Sets pin (a) to value (b) on the stack
-  OP_PINMODE, // Sets pinMode of pin (a) to (b) on the stack
+  OP_SETPIN,       // Sets pin (a) to value (b) on the stack
+  OP_DELAY_MICROS, // Delays execution for (a) µs
+  OP_DELAY_MS,     // Delays execution for (a) ms
+  OP_DELAY_S,      // Delays execution for (a) s
+  OP_DELAY_M,      // Delays execution for (a) m
+  OP_DELAY_H,      // Delays execution for (a) h
 } OpCode;
 
 /// @brief Bytecode chunk of uint8_t's

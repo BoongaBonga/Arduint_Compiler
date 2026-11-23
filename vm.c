@@ -1,7 +1,10 @@
 #ifndef ARDUINT_VM_C
 #define ARDUINT_VM_C
 
+#include <Windows.h>
+#include <ctype.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -11,6 +14,7 @@
 #include "errorHandling.h"
 #include "object.h"
 #include "parser.h"
+#include "serial.h"
 #include "value.h"
 #include "vm.h"
 
@@ -32,6 +36,10 @@ const char VALUE_TYPE_NAMES[4][8] = {
     [VAL_NUMBER] = "number",
     [VAL_OBJECT] = "object",
 };
+
+bool keepRunning = true;
+HANDLE commHandle = INVALID_HANDLE_VALUE;
+uint32_t packetIdCounter = 0;
 
 static ValueType convToValueType(ConversionType type) {
   switch (type) {
@@ -60,6 +68,25 @@ static ConversionType objToConvType(ObjType type) {
   }
 }
 
+BOOL WINAPI CtrlHandler(DWORD fdwCtrlType) {
+  if (fdwCtrlType == CTRL_C_EVENT) {
+    keepRunning = false;
+    printf("\n[Ctrl+C] Exiting...\n");
+
+    if (commHandle != INVALID_HANDLE_VALUE) {
+      // 1. Abort any ongoing read/write operations immediately
+      PurgeComm(commHandle,
+                PURGE_TXABORT | PURGE_RXABORT | PURGE_TXCLEAR | PURGE_RXCLEAR);
+      // 2. Safely close the Windows kernel handle
+      CloseHandle(commHandle);
+      printf("\nCOM port closed cleanly.\n");
+    }
+
+    ExitProcess(0);
+  }
+  return TRUE;
+}
+
 static void resetStack(VM *vm) {
   vm->stackTop = vm->stack;
   vm->frameCount = 0;
@@ -77,12 +104,24 @@ void initVM(Parser *parser, VM *vm) {
   for (Pin p = PIN_D0; p < PIN_COUNT; p++) {
     vm->pinModes[p] = PINMODE_INPUT;
   }
+
+  // Setup Arduino
+  vm->needsArduino = parser->needsArduino;
+  if (vm->needsArduino) {
+    SetConsoleCtrlHandler(CtrlHandler, TRUE);
+    printf("Program running. Press ctrl+C to safely quit.\n");
+
+    commHandle = openHandle(cmdFlags.comPort);
+  }
 }
 
 void freeVM(VM *vm) {
   freeObjects(vm->objects);
   freeTable(&vm->strings);
   freeTable(&vm->globals);
+
+  // Close down Arduino
+  if (vm->needsArduino) CloseHandle(commHandle);
 }
 
 void push(VM *vm, Value value) { *vm->stackTop++ = value; }
@@ -299,6 +338,32 @@ static int concatenate(VM *vm, Value aVal, Value bVal) {
 
   ObjString *result = takeString(&vm->objects, chars, length, &vm->strings);
   push(vm, OBJECT_VAL(result));
+}
+
+static void sleepMicros(uint64_t microseconds) {
+  LARGE_INTEGER frequency, start, current;
+  QueryPerformanceFrequency(&frequency);
+  QueryPerformanceCounter(&start);
+
+  uint64_t target_ticks = (microseconds * frequency.QuadPart) / 1e6;
+
+  // Only yield the CPU if the delay is longer than 2 milliseconds (2000 us)
+  if (microseconds > 2000) {
+    // Request 1ms scheduler precision from Windows
+    timeBeginPeriod(1);
+
+    // Sleep for the bulk of the time, leaving a 2ms buffer for spin-waiting
+    DWORD sleep_ms = (DWORD)((microseconds - 2000) / 1000);
+    Sleep(sleep_ms);
+
+    // Restore default Windows scheduler precision
+    timeEndPeriod(1);
+  }
+
+  // Spin-wait for the remaining microseconds to hit the exact target
+  do {
+    QueryPerformanceCounter(&current);
+  } while ((uint64_t)(current.QuadPart - start.QuadPart) < target_ticks);
 }
 
 static InterpretResult run(VM *vm) {
@@ -573,9 +638,62 @@ static InterpretResult run(VM *vm) {
       printf("Setting pin %d to %s\n", pin, value ? "HIGH" : "LOW");
       break;
     }
-    case OP_PINMODE: {
-      Value mode = pop(vm);
-      Value pin = pop(vm);
+    case OP_DELAY_H:
+    case OP_DELAY_M:
+    case OP_DELAY_S:
+    case OP_DELAY_MS:
+    case OP_DELAY_MICROS: {
+      // Get sleep value
+      Value time = convertValue(vm, pop(vm), CONV_NUMBER);
+      if (time.type != VAL_NUMBER) {
+        runtimeError(vm, "Can only delay for a numerical duration.");
+        return INTERPRET_RUNTIME_ERROR;
+      }
+
+      if (time.as.number < 0) {
+        runtimeError(vm, "Cannot delay for a negative time period.");
+        return INTERPRET_RUNTIME_ERROR;
+      }
+
+      // delay using window's sleep() function with ms
+      if (instruction != OP_DELAY_MICROS) {
+        unsigned int sleepTime;
+        switch (instruction) {
+        case OP_DELAY_MS: {
+          if (time.as.number > (double)UINT32_MAX) goto TOO_LARGE_DELAY;
+          sleepTime = (unsigned int)time.as.number;
+          break;
+        }
+        case OP_DELAY_S: {
+          if (time.as.number * 1e3 > (double)UINT32_MAX) goto TOO_LARGE_DELAY;
+          sleepTime = (unsigned int)time.as.number * 1e3;
+          break;
+        }
+        case OP_DELAY_M: {
+          if (time.as.number * 60e3 > (double)UINT32_MAX) goto TOO_LARGE_DELAY;
+          sleepTime = (unsigned int)time.as.number * 60e3;
+          break;
+        }
+        case OP_DELAY_H: {
+          if (time.as.number * 36e5 > (double)UINT32_MAX) goto TOO_LARGE_DELAY;
+          sleepTime = (unsigned int)time.as.number * 36e5;
+          break;
+        }
+        }
+
+        goto END_TOO_LARGE_DELAY; // Too large delay errors--------------------
+      TOO_LARGE_DELAY:
+        runtimeError(vm, "Too long of a delay. Can delay for at most %u hours.",
+                     (double)UINT32_MAX / 36e5);
+        return INTERPRET_RUNTIME_ERROR;
+      END_TOO_LARGE_DELAY: //--------------------------------------------------
+
+        Sleep(sleepTime);
+      } else {
+        // delay microseconds
+        sleepMicros((uint64_t)time.as.number);
+      }
+      // continue execution
       break;
     }
 

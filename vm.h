@@ -74,6 +74,8 @@ typedef struct VM {
   Object *objects;
 
   Table strings;
+
+  bool needsArduino;
 } VM;
 
 void initVM(Parser *parser, VM *vm);

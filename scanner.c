@@ -123,7 +123,7 @@ char *copySourceStr(const char *start, int length) {
   return memcpy(str, start, length);
 }
 
-static Token makeToken(Scanner *scanner, TokenType type) {
+static Token makeToken(Scanner *scanner, TokenKind type) {
   Token token;
   token.type = type;
   token.start = scanner->start;
@@ -154,8 +154,8 @@ static Token errorToken(Scanner *scanner, const char *message, int line,
   return token;
 }
 
-static TokenType checkKeyword(Scanner *scanner, int start, int lengthRemainder,
-                              const char *rest, TokenType type) {
+static TokenKind checkKeyword(Scanner *scanner, int start, int lengthRemainder,
+                              const char *rest, TokenKind type) {
   // Check if the length of the token matches and then check characters
   if (scanner->current - scanner->start == start + lengthRemainder &&
       memcmp(scanner->start + start, rest, lengthRemainder) == 0)
@@ -164,7 +164,7 @@ static TokenType checkKeyword(Scanner *scanner, int start, int lengthRemainder,
     return TOKEN_IDENTIFIER;
 }
 
-static TokenType identifierType(Scanner *scanner) {
+static TokenKind identifierType(Scanner *scanner) {
   const ptrdiff_t identifierLen = scanner->current - scanner->start;
   switch (*scanner->start) {
   case 'A': {
@@ -194,17 +194,15 @@ static TokenType identifierType(Scanner *scanner) {
   case 'd': {
     switch (identifierLen) {
     case 6: {
-      TokenType type = checkKeyword(scanner, 1, 5, "efine", TOKEN_DEFINE);
+      TokenKind type = checkKeyword(scanner, 1, 5, "efine", TOKEN_DEFINE);
       if (type != TOKEN_DEFINE) return type;
       // Continue scanning the rest of the line
       defineStatement(scanner);
       skipWhiteSpace(scanner);
       return TOKEN_NEWLINE;
     }
-    case 2: return checkKeyword(scanner, 1, 1, "o", TOKEN_DO);
-    case 7: return checkKeyword(scanner, 1, 6, "efault", TOKEN_DEFAULT);
-    case 11:
-      return checkKeyword(scanner, 1, 10, "elayMicros", TOKEN_DELAY_MICROS);
+    case 2:  return checkKeyword(scanner, 1, 1, "o", TOKEN_DO);
+    case 7:  return checkKeyword(scanner, 1, 6, "efault", TOKEN_DEFAULT);
     default: return checkKeyword(scanner, 1, 4, "elay", TOKEN_DELAY);
     }
   }
@@ -224,7 +222,7 @@ static TokenType identifierType(Scanner *scanner) {
   }
   case 'H': return checkKeyword(scanner, 1, 3, "IGH", TOKEN_TRUE);
   case 'h':
-    if (identifierLen == 1) return TOKEN_H;
+    if (identifierLen == 1) return TOKEN_HOURS;
   case 'I':
   case 'i': return checkKeyword(scanner, 1, 1, "f", TOKEN_IF);
   case 'L': {
@@ -234,10 +232,10 @@ static TokenType identifierType(Scanner *scanner) {
   }
   case 'l': return checkKeyword(scanner, 1, 3, "oop", TOKEN_LOOP);
   case 'm': {
-    if (identifierLen == 1) return TOKEN_M;
+    if (identifierLen == 1) return TOKEN_MINUTES;
     if (identifierLen == 6)
-      return checkKeyword(scanner, 1, 5, "icros", TOKEN_µS);
-    return checkKeyword(scanner, 1, 1, "s", TOKEN_MS);
+      return checkKeyword(scanner, 1, 5, "icros", TOKEN_MICROSECONDS);
+    return checkKeyword(scanner, 1, 1, "s", TOKEN_MILLISECONDS);
   }
   case 'N':
   case 'n': {
@@ -256,7 +254,7 @@ static TokenType identifierType(Scanner *scanner) {
   }
   case 'S': return checkKeyword(scanner, 1, 5, "etPin", TOKEN_SETPIN);
   case 's': {
-    if (identifierLen == 1) return TOKEN_S;
+    if (identifierLen == 1) return TOKEN_SECONDS;
     switch (*(scanner->start + 1)) {
     case 'e': return checkKeyword(scanner, 1, 5, "etPin", TOKEN_SETPIN);
     case 'w': return checkKeyword(scanner, 1, 5, "witch", TOKEN_SWITCH);
@@ -324,7 +322,8 @@ Token scanToken(Scanner *scanner, bool canBeDefinition) {
 
   // Check for the 'µ' in 'µs', this is outside of char boundary
   if ((unsigned char)c == 0xC2 && (unsigned char)advance(scanner) == 0xB5) {
-    return makeToken(scanner, TOKEN_µS);
+    advance(scanner);
+    return makeToken(scanner, TOKEN_MICROSECONDS);
   }
 
   // Check if it's a macro definition

@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "cmdLineFlags.h"
 #include "collection.h"
@@ -48,36 +47,50 @@ static char *readFile(const char *path) {
 
 static void setCmdFlags(int argc, char *argv[]) {
   for (int i = 1; i < argc; i++) {
-    if (argv[i][0] == '-') {
-      // Detect errors
-      if (strlen(argv[i]) == 3) {
-        // Determine flag
-        if (argv[i][1] == 'd') {
-          switch (argv[i][2]) {
-          case 's': cmdFlags.debugScanner = true; continue;
-          case 'p': cmdFlags.debugParser = true; continue;
-          case 'v': cmdFlags.debugVM = true; continue;
-          default:  break;
-          }
-        } else if (argv[i][1] == 'm') {
-          if (cmdFlags.mode != MODE_UNSET) {
-            defaultError("Cannot set two modes at once.");
-            exit(2);
-          }
-          switch (argv[i][2]) {
-          case 'l': cmdFlags.mode = MODE_LEX; continue;
-          case 'r': cmdFlags.mode = MODE_RUN; continue;
-          default:  break;
-          }
-        }
-      }
+    if (argv[i][0] != '-') {
+      // Set path
+      cmdFlags.path = argv[i];
+      continue;
+    }
 
+    // Determine flag
+    switch (argv[i][1]) {
+    case 'd': {
+      switch (argv[i][2]) {
+      case 's': cmdFlags.debugScanner = true; continue;
+      case 'p': cmdFlags.debugParser = true; continue;
+      case 'v': cmdFlags.debugVM = true; continue;
+      default:  break;
+      }
+      continue;
+    }
+    case 'm': {
+      if (cmdFlags.mode != MODE_UNSET) {
+        defaultError("Cannot set two modes at once.");
+        exit(2);
+      }
+      switch (argv[i][2]) {
+      case 'l': cmdFlags.mode = MODE_LEX; continue;
+      case 'r': cmdFlags.mode = MODE_RUN; continue;
+      default:  break;
+      }
+      continue;
+    }
+    case 'p': {
+      // Get comPort
+      if (i == argc - 1) {
+        fprintf(stderr, "Expect COM port name after '-p' flag.");
+        exit(2);
+      }
+      snprintf(cmdFlags.comPort, sizeof(cmdFlags.comPort), "\\\\.\\%s",
+               argv[++i]);
+      continue;
+    }
+    default: {
       // Unknown flag
       defaultError("Unknown flag '%s'", argv[i]);
       exit(2);
-    } else {
-      // Set path
-      cmdFlags.path = argv[i];
+    }
     }
   }
 
@@ -91,7 +104,8 @@ static void setCmdFlags(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
   // Expect at least one argument, source.ardi and at most source, -ds and -dp
   if (argc < 2) {
-    defaultError("Too little arguments. Please include [source].ardi.");
+    defaultError("Too little arguments. Please include [source].ardi and the "
+                 "compiler mode.");
     return -1;
   }
 
@@ -106,16 +120,21 @@ int main(int argc, char *argv[]) {
   Scanner scanner = initScanner(source);
   scanTokens(&scanner);
 
+  // Optionally print tokens
   if (cmdFlags.debugScanner) printTokens(&scanner.tokens);
 
+  // Parse the tokens & optionally print them
   Parser parser = initParser(&scanner.tokens);
   ObjFunction *program = parse(&parser);
 
+  // Try running program
   if (cmdFlags.mode == MODE_RUN && parser.isValidProgram && !scanner.hadError) {
     VM vm;
     initVM(&parser, &vm);
+
     interpret(&vm, program);
 
+    printf("Exiting...");
     freeVM(&vm);
   }
 
@@ -123,4 +142,5 @@ int main(int argc, char *argv[]) {
   free(source);
   freeScanner(&scanner);
   freeParser(&parser);
+  return 0;
 }

@@ -6,14 +6,13 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "errorHandling.h"
 #include "serial.h"
 
 static void handleSerialOpenError(HANDLE hComm) {
   DWORD win32ErrorCode;   // Variable to store error code
   CHAR errorMessage[256]; // Character array to store error messages
   if (hComm == INVALID_HANDLE_VALUE) {
-    printf("Error");
-
     win32ErrorCode = GetLastError();
 
     // Turn error code into messages
@@ -23,14 +22,19 @@ static void handleSerialOpenError(HANDLE hComm) {
         0,              // Language ID (0 = system default)
         errorMessage,   // buffer where the error message will be stored
         sizeof(errorMessage), NULL);
-    printf("\nError : %s", errorMessage);
+    defaultError("Error opening Arduino COM port: %s", errorMessage);
   }
+  exit(OPENCOMPORT_ERROR);
 }
 
-HANDLE openHandle() {
+HANDLE openHandle(char *port) {
+  if (strlen(port) < strlen("\\\\.\\COM4")) {
+    fprintf(stderr, "Invalid COM port '%s'.\n", port);
+    exit(2);
+  }
   // Create handle with ANSI (8-bit strings)
   HANDLE commHandle =
-      CreateFileA(PORT, // If COM is higher than 9 you must use "\\\\.\\COM10"
+      CreateFileA(port, // If COM is higher than 9 you must use "\\\\.\\COM10"
                   GENERIC_READ | GENERIC_WRITE,
                   0,             // No sharing
                   NULL,          // No security

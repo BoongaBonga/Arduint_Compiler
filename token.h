@@ -1,5 +1,5 @@
-#ifndef ARDUINT_TOKEN_H
-#define ARDUINT_TOKEN_H
+#ifndef ARDUINT_TOKEN_HOURS
+#define ARDUINT_TOKEN_HOURS
 
 typedef enum {
   TOKEN_IDENTIFIER,
@@ -30,13 +30,12 @@ typedef enum {
   TOKEN_ANALOG,
   TOKEN_READPIN,
   TOKEN_DELAY,
-  TOKEN_DELAY_MICROS,
   TOKEN_PRINT,
-  TOKEN_µS,
-  TOKEN_MS,
-  TOKEN_S,
-  TOKEN_M,
-  TOKEN_H,
+  TOKEN_MICROSECONDS,
+  TOKEN_MILLISECONDS,
+  TOKEN_SECONDS,
+  TOKEN_MINUTES,
+  TOKEN_HOURS,
 
   // Functions & keywords
   TOKEN_DEFINE,
@@ -95,10 +94,10 @@ typedef enum {
   TOKEN_NEWLINE,
   TOKEN_ERROR,
   TOKEN_EOF,
-} TokenType;
+} TokenKind;
 
 typedef struct {
-  TokenType type;
+  TokenKind type;
   const char *start;
   int length;
   int line;

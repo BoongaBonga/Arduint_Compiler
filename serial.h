@@ -10,6 +10,7 @@
 
 #define STATUS_PRINTING
 
+#define OPENCOMPORT_ERROR 100
 #define GETCOMMSTATE_ERROR 101
 #define SETCOMMSTATE_ERROR 102
 #define PURGECOMMBUF_ERROR 103
@@ -33,7 +34,7 @@ typedef struct {
 
 /// @brief Open a new serial handle
 /// @return HANDLE | NULL
-HANDLE openHandle();
+HANDLE openHandle(char *port);
 
 /// @brief Configures an opened Serial handle
 /// @param hComm Serial port Handle

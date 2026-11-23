@@ -42,13 +42,12 @@ const char *lexemes[79] = {
     "ANALOG",
     "READPIN",
     "DELAY",
-    "DELAY_MICROS",
     "PRINT",
-    "MICROS",
-    "MS",
-    "S",
-    "M",
-    "H",
+    "MICROSECONDS",
+    "MILLISECONDS",
+    "SECONDS",
+    "MINUTES",
+    "HOURS",
 
     // Functions & keywords
     "DEFINE",
@@ -289,7 +288,11 @@ int printInstruction(Chunk *chunk, int offset) {
   case OP_AND_AND:       return simpleInstruction("OP_AND_AND", offset);
   case OP_OR_OR:         return simpleInstruction("OP_OR_OR", offset);
   case OP_SETPIN:        return simpleInstruction("OP_SETPIN", offset);
-  case OP_PINMODE:       return simpleInstruction("OP_PINMODE", offset);
+  case OP_DELAY_MICROS:  return simpleInstruction("OP_DELAY_MICROS", offset);
+  case OP_DELAY_MS:      return simpleInstruction("OP_DELAY_MS", offset);
+  case OP_DELAY_S:       return simpleInstruction("OP_DELAY_S", offset);
+  case OP_DELAY_M:       return simpleInstruction("OP_DELAY_M", offset);
+  case OP_DELAY_H:       return simpleInstruction("OP_DELAY_H", offset);
   default: defaultError("Unknown opCode %d.", instruction); return offset + 1;
   }
 }

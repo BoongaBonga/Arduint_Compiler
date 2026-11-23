@@ -9,6 +9,7 @@ typedef struct {
   bool debugScanner;
   bool debugParser;
   bool debugVM;
+  char comPort[10]; // ex: \\.\COM4 or "\\\\.\\COM4"
   ProgramMode mode;
   const char *path;
 } CmdFlags;

@@ -35,6 +35,7 @@ typedef struct {
   bool isValidProgram;
   bool hadError;
   bool isInLoop;
+  bool needsArduino;
 
   Table stringPool;
   Table globalStrings;
