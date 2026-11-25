@@ -4,7 +4,7 @@ GCCFLAGS = -lwinmm
 FLAGS = -ds -dp -dv
 PORT = COM4
 
-INPUTFILE = test.ardi
+INPUTFILE = test.ardt
 
 .PHONY: all, clean, run, lex, debug_lex, debug_run
 

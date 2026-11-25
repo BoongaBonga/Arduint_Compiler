@@ -8,17 +8,20 @@
 #define PORT "\\\\.\\COM4"
 #define BAUDRATE 115200
 
-#define STATUS_PRINTING
-
 #define OPENCOMPORT_ERROR 100
 #define GETCOMMSTATE_ERROR 101
 #define SETCOMMSTATE_ERROR 102
 #define PURGECOMMBUF_ERROR 103
-#define GETCHAR_SETTIMEOUT_ERROR 104
+#define SETTIMEOUT_ERROR 104
+#define READFILE_ERROR 105
+
 #define GETCHAR_COM_ERROR -1
 #define GETCHAR_NO_DATA_RECEIVED -2
 
-typedef enum { SYNC = (uint8_t)200, ASYNC = (uint8_t)201 } PacketHeader;
+typedef enum {
+  PCKT_HEAD_SYNC = (uint8_t)200,
+  PCKT_HEAD_ASYNC = (uint8_t)201
+} PacketHeader;
 
 #define PACKET_NON_ARG_BYTES                                                   \
   8 // The amount of bytes in the CommPacket that are not arguments

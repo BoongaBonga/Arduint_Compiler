@@ -248,7 +248,7 @@ static bool matchAssignmentToken(Parser *parser) {
 }
 
 static void expressionBp(Parser *parser, int minBp);
-static void expression(Parser *parser);
+static bool expression(Parser *parser);
 static void statement(Parser *parser);
 static void declaration(Parser *parser);
 
@@ -464,7 +464,8 @@ static void namedVariable(Parser *parser, Token *name, bool canAssign) {
 
     // Get var -> add expr -> set global
     emitOps(parser, getOperation, (uint8_t)arg);
-    expression(parser);
+    expression(parser); // TODO: i might need to check whether i need to pop the
+                        // result or not?
 
     emitOp(parser, getOp(op, INFIX));
     emitOps(parser, setOperation, (uint8_t)arg);
@@ -770,16 +771,23 @@ static void expressionBp(Parser *parser, int minBp) {
   return;
 }
 
-static void expression(Parser *parser) { expressionBp(parser, 0); }
+/// @brief Parses an expression and leaves it's value on the stack. Returns true
+/// if you are allowed to pop the value later, false if you can't.
+/// @param parser parser to parse with
+static bool expression(Parser *parser) {
+  int localCount = parser->compiler.localCount;
+  expressionBp(parser, 0);
+  // If # of locals is the same, you can pop the result.
+  return parser->compiler.localCount == localCount;
+}
 
 //____________________________________________
 //                STATEMENTS
 //____________________________________________
 
 static void expressionStatement(Parser *parser) {
-  int localCount = parser->compiler.localCount;
-  expression(parser);
-  if (parser->compiler.localCount == localCount) emitOp(parser, OP_POP);
+  bool canPop = expression(parser);
+  if (canPop) emitOp(parser, OP_POP);
 }
 
 static void block(Parser *parser) {

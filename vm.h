@@ -1,6 +1,8 @@
 #ifndef ARDUINT_VM_H
 #define ARDUINT_VM_H
 
+#include <stdint.h>
+
 #include "collection.h"
 #include "object.h"
 #include "parser.h"
@@ -56,7 +58,12 @@ typedef enum {
   PIN_A3,
   PIN_A4,
   PIN_A5
-} Pin;
+} PinNumber;
+
+typedef struct {
+  uint8_t port;
+  uint8_t index;
+} PinPosition;
 
 typedef struct VM {
   CallFrame frames[FRAMES_MAX];

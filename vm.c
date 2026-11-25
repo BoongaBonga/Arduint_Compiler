@@ -18,6 +18,15 @@
 #include "value.h"
 #include "vm.h"
 
+// Command values of serial commands
+#define SERIAL_COMMAND_PINMODE (uint8_t)0x01
+#define SERIAL_COMMAND_DWRITE (uint8_t)0x02
+
+// Bitmasks for serial comm. codes
+#define SERMASK_DVALUE 7
+#define SERMASK_PORT 4
+#define SERMASK_INDEX 0
+
 typedef enum { EQ_NOT_EQUAL, EQ_EQUAL, EQ_ERROR } Equality;
 typedef enum { CONVRES_OK = 0, CONVRES_ERROR = -1 } ConversionResult;
 
@@ -37,7 +46,7 @@ const char VALUE_TYPE_NAMES[4][8] = {
     [VAL_OBJECT] = "object",
 };
 
-bool keepRunning = true;
+volatile bool keepRunning = true;
 HANDLE commHandle = INVALID_HANDLE_VALUE;
 uint32_t packetIdCounter = 0;
 
@@ -68,6 +77,24 @@ static ConversionType objToConvType(ObjType type) {
   }
 }
 
+static PinPosition pinNumToPos(PinNumber pin) {
+  if (pin <= 7) {
+    PinPosition pos = {2, pin};
+    return pos;
+  } else if (pin <= 13) {
+    PinPosition pos = {0, pin - 8};
+    return pos;
+  } else if (pin <= 19) {
+    PinPosition pos = {1, pin - 14};
+    return pos;
+  }
+}
+
+static uint8_t makeVPI(bool value, uint8_t port, uint8_t index) {
+  return ((index & 0b111) << SERMASK_INDEX) | ((port & 0b11) << SERMASK_PORT) |
+         (value << SERMASK_DVALUE);
+}
+
 BOOL WINAPI CtrlHandler(DWORD fdwCtrlType) {
   if (fdwCtrlType == CTRL_C_EVENT) {
     keepRunning = false;
@@ -92,6 +119,49 @@ static void resetStack(VM *vm) {
   vm->frameCount = 0;
 }
 
+static void initializeSerial(VM *vm) {
+  commHandle = openHandle(cmdFlags.comPort);
+
+  int result = configureDCB(commHandle);
+  switch (result) {
+  case 0: break;
+  case GETCOMMSTATE_ERROR:
+    runtimeError(vm, "Error getting state of COM port.");
+    exit(result);
+  case SETCOMMSTATE_ERROR:
+    runtimeError(vm, "Error setting state of COM port.");
+    exit(result);
+  case PURGECOMMBUF_ERROR:
+    runtimeError(vm, "Error cleaning up COM port buffer.");
+    exit(result);
+  case SETTIMEOUT_ERROR:
+    runtimeError(vm, "Error setting timeouts of COM port.");
+    exit(result);
+  }
+
+  printf("\n%sSerial initialized on PC. Waiting for Arduino reboot...%s\n",
+         COL_YELLOW, AC_NORMAL);
+  Sleep(2000); // Wait 2 seconds for Arduino bootloader
+
+  // Wait until 0xAA is received
+  while (keepRunning) {
+    int16_t input = commGetChar(commHandle);
+    if (input == 0xAA) break;
+    if (input == GETCHAR_COM_ERROR) {
+      runtimeError(vm, "Error whilst trying to read serial input.");
+      exit(READFILE_ERROR);
+    }
+    if (input == GETCHAR_NO_DATA_RECEIVED) continue;
+    fprintf(stderr,
+            "%sReceived unexpected byte during Arduino startup sequence: "
+            "'%d'%s\n",
+            COL_YELLOW, input, AC_NORMAL);
+  }
+
+  printf("%sConnected to Arduino! Ready to execute program.%s\n\n", COL_GREEN,
+         AC_NORMAL);
+}
+
 void initVM(Parser *parser, VM *vm) {
   vm->objects = NULL;
   vm->strings = initTable();
@@ -101,18 +171,18 @@ void initVM(Parser *parser, VM *vm) {
   vm->localCount = 0;
   resetStack(vm);
 
-  for (Pin p = PIN_D0; p < PIN_COUNT; p++) {
+  for (PinNumber p = PIN_D0; p < PIN_COUNT; p++) {
     vm->pinModes[p] = PINMODE_INPUT;
   }
 
   // Setup Arduino
   vm->needsArduino = parser->needsArduino;
   if (vm->needsArduino) {
-    SetConsoleCtrlHandler(CtrlHandler, TRUE);
-    printf("Program running. Press ctrl+C to safely quit.\n");
-
-    commHandle = openHandle(cmdFlags.comPort);
+    initializeSerial(vm);
   }
+
+  SetConsoleCtrlHandler(CtrlHandler, TRUE);
+  printf("Program running. Press ctrl+C to safely quit.\n\n");
 }
 
 void freeVM(VM *vm) {
@@ -618,24 +688,45 @@ static InterpretResult run(VM *vm) {
     case OP_SETPIN: {
       Value valueVal = convertValue(vm, pop(vm), CONV_BOOL);
       Value pinVal = convertValue(vm, pop(vm), CONV_NUMBER);
+
       CHECK_TYPE(valueVal, VAL_BOOL,
                  "Can only set pin to HIGH/LOW (true/false).");
       CHECK_NUMBER(pinVal, "A pin must be a number between (0-13) / A(0-5).");
+
       if ((int)pinVal.as.number >= PIN_COUNT || (int)pinVal.as.number < 0) {
         runtimeError(vm, "Invalid pin number '%d'.", (int)pinVal.as.number);
         return INTERPRET_RUNTIME_ERROR;
       }
 
-      Pin pin = (Pin)pinVal.as.number;
+      PinNumber pinNum = (PinNumber)pinVal.as.number;
+      PinPosition pin = pinNumToPos(pinNum);
       bool value = valueVal.as.boolean;
 
-      // Check if the pin to be set is already output
-      if (vm->pinModes[pin] == PINMODE_INPUT) {
-        printf("Setting pin %d to OUTPUT.\n", pin);
-        vm->pinModes[pin] = PINMODE_OUTPUT;
+      // Set the pin actually
+      // Create a com packet
+      CommPacket packet;
+      packet.packetHeader = PCKT_HEAD_ASYNC;
+      packet.id = packetIdCounter++;
+      packet.argCount = 4;
+
+      // And set the commands
+      uint8_t argList[4];
+
+      // Pinmode
+      //  Check if the pin to be set is already output
+      if (vm->pinModes[pinNum] == PINMODE_INPUT) {
+        vm->pinModes[pinNum] = PINMODE_OUTPUT;
+
+        argList[0] = SERIAL_COMMAND_PINMODE;
+        argList[1] = makeVPI(PINMODE_OUTPUT, pin.port, pin.index);
       }
 
-      printf("Setting pin %d to %s\n", pin, value ? "HIGH" : "LOW");
+      argList[2] = SERIAL_COMMAND_DWRITE;
+      argList[3] = makeVPI(value, pin.port, pin.index);
+
+      packet.args = argList;
+      sendCommPacket(commHandle, &packet);
+
       break;
     }
     case OP_DELAY_H:
@@ -681,7 +772,8 @@ static InterpretResult run(VM *vm) {
         }
         }
 
-        goto END_TOO_LARGE_DELAY; // Too large delay errors--------------------
+        goto END_TOO_LARGE_DELAY; // Too large delay
+                                  // errors--------------------
       TOO_LARGE_DELAY:
         runtimeError(vm, "Too long of a delay. Can delay for at most %u hours.",
                      (double)UINT32_MAX / 36e5);

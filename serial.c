@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "common.h"
+#include "debug.h"
 #include "errorHandling.h"
 #include "serial.h"
 
@@ -22,14 +24,15 @@ static void handleSerialOpenError(HANDLE hComm) {
         0,              // Language ID (0 = system default)
         errorMessage,   // buffer where the error message will be stored
         sizeof(errorMessage), NULL);
-    defaultError("Error opening Arduino COM port: %s", errorMessage);
+    defaultError("%sError opening Arduino COM port: %s%s\n", COL_RED,
+                 errorMessage, AC_NORMAL);
   }
   exit(OPENCOMPORT_ERROR);
 }
 
 HANDLE openHandle(char *port) {
   if (strlen(port) < strlen("\\\\.\\COM4")) {
-    fprintf(stderr, "Invalid COM port '%s'.\n", port);
+    fprintf(stderr, "%sInvalid COM port '%s'.%s\n", COL_RED, port, AC_NORMAL);
     exit(2);
   }
   // Create handle with ANSI (8-bit strings)
@@ -43,10 +46,9 @@ HANDLE openHandle(char *port) {
                   NULL);         // Null for COM devices
 
   if (commHandle == INVALID_HANDLE_VALUE) {
-    handleSerialOpenError(commHandle);
-    return NULL;
+    handleSerialOpenError(commHandle); // auto-exits program
   } else
-    printf("Opening serial port succesfull\n\n");
+    printf("%sOpening serial port succesfull%s\n", COL_GREEN, AC_NORMAL);
 
   return commHandle;
 }
@@ -74,7 +76,6 @@ int configureDCB(HANDLE hComm) {
   // Get the current settings for the port hComm
   // and fill it in the DCB_Struct_Parameter struct
   if (!GetCommState(hComm, &DCBStructParameter)) {
-    printf("\nError in GetCommState()");
     return GETCOMMSTATE_ERROR;
   }
 #ifdef STATUS_PRINTING
@@ -91,7 +92,6 @@ int configureDCB(HANDLE hComm) {
   DCBStructParameter.fRtsControl = RTS_CONTROL_ENABLE;
 
   if (!SetCommState(hComm, &DCBStructParameter)) {
-    printf("\nError in SetCommState()");
     return SETCOMMSTATE_ERROR;
   }
 #ifdef STATUS_PRINTING
@@ -100,7 +100,6 @@ int configureDCB(HANDLE hComm) {
 
   // Clear out transmit & receive buffers
   if (!PurgeComm(hComm, PURGE_RXCLEAR | PURGE_TXCLEAR)) {
-    printf("\nError in purging Comm buffers");
     return PURGECOMMBUF_ERROR;
   }
 #ifdef STATUS_PRINTING
@@ -110,8 +109,7 @@ int configureDCB(HANDLE hComm) {
 
   // Configure timeouts
   if (!setCommTimeoutConfiguration(hComm)) {
-    printf("Error setting COM timeouts");
-    return GETCHAR_SETTIMEOUT_ERROR;
+    return SETTIMEOUT_ERROR;
   }
 #ifdef STATUS_PRINTING
   else
@@ -138,7 +136,7 @@ bool commSendChar(HANDLE hComm, char character) {
   DWORD bytesWritten = 0;
 
   if (!WriteFile(hComm, &character, sizeof(character), &bytesWritten, NULL)) {
-    printf("\nError in Writing Byte to Serial Port");
+    printf("%sError in Writing Byte to Serial Port%s\n", COL_RED, AC_NORMAL);
     return false;
   }
 
@@ -177,8 +175,6 @@ bool sendCommPacket(HANDLE hComm, volatile CommPacket *packet) {
       (uint8_t)(checkSum >> 8);
   charArr[packet->argCount + PACKET_NON_ARG_BYTES - 1] = (uint8_t)checkSum;
 
-  printf("checksum: %X, ", checkSum);
-
 #ifdef STATUS_PRINTING
   printf("Uploading: {\n");
   for (int i = 0; i < packet->argCount + PACKET_NON_ARG_BYTES; i++) {
@@ -192,14 +188,15 @@ bool sendCommPacket(HANDLE hComm, volatile CommPacket *packet) {
 
   if (!WriteFile(hComm, charArr, packet->argCount + PACKET_NON_ARG_BYTES,
                  &bytesWritten, NULL)) {
-    printf("\nError in Writing Bytes to Serial Port");
+    fprintf(stderr, "%sError in Writing Bytes to Serial Port\n%s", COL_RED,
+            AC_NORMAL);
     free(charArr);
     return false;
   } else {
+    FlushFileBuffers(hComm);
     free(charArr);
     return true;
   }
-  // FlushFileBuffers(hComm);
 }
 
 #endif

@@ -109,7 +109,7 @@ const char *lexemes[79] = {
 };
 
 void printToken(Token *token) {
-  printf("[%s", lexemes[token->type]);
+  printf("[%s: %d", lexemes[token->type], token->line);
 
   bool sourceNeeded = token->type == TOKEN_NUMBER ||
                       token->type == TOKEN_IDENTIFIER ||
@@ -232,7 +232,8 @@ int printInstruction(Chunk *chunk, int offset) {
   if (line != lastLine) {
     printf("%4d %04d ", lastLine = line, offset);
   } else {
-    printf("   | %04d ", lastLine = line, offset);
+    lastLine = line;
+    printf("   | %04d ", offset);
   }
 
   uint8_t instruction = *(uint8_t *)vecGet(&chunk->byteCode, offset);
