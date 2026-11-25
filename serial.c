@@ -24,8 +24,7 @@ static void handleSerialOpenError(HANDLE hComm) {
         0,              // Language ID (0 = system default)
         errorMessage,   // buffer where the error message will be stored
         sizeof(errorMessage), NULL);
-    defaultError("%sError opening Arduino COM port: %s%s\n", COL_RED,
-                 errorMessage, AC_NORMAL);
+    defaultError("Error opening Arduino COM port: %s\n", errorMessage);
   }
   exit(OPENCOMPORT_ERROR);
 }
@@ -136,7 +135,8 @@ bool commSendChar(HANDLE hComm, char character) {
   DWORD bytesWritten = 0;
 
   if (!WriteFile(hComm, &character, sizeof(character), &bytesWritten, NULL)) {
-    printf("%sError in Writing Byte to Serial Port%s\n", COL_RED, AC_NORMAL);
+    fprintf(stderr, "%sError in Writing Byte to Serial Port%s\n", COL_RED,
+            AC_NORMAL);
     return false;
   }
 

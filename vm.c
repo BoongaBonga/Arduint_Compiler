@@ -179,9 +179,9 @@ void initVM(Parser *parser, VM *vm) {
   vm->needsArduino = parser->needsArduino;
   if (vm->needsArduino) {
     initializeSerial(vm);
+    SetConsoleCtrlHandler(CtrlHandler, TRUE);
   }
 
-  SetConsoleCtrlHandler(CtrlHandler, TRUE);
   printf("Program running. Press ctrl+C to safely quit.\n\n");
 }
 
@@ -553,6 +553,7 @@ static InterpretResult run(VM *vm) {
       Value val = pop(vm);
       printValue(&val);
       printf("\n");
+      fflush(stdout);
       break;
     }
     case OP_JUMP_IF_FALSE: {

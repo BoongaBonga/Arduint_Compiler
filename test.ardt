@@ -1,13 +1,3 @@
-a = LOW
-loop{
-  a = !a
-  setPin 7 to a
+print "hi"
 
-  b = null
-  if a then b = "HIGH"
-  else b = "LOW"
-
-  print "Setting pin 7 to " + b
-
-  delay 1s
-}
+print null + 2
