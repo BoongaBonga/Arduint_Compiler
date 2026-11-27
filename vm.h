@@ -6,6 +6,7 @@
 #include "collection.h"
 #include "object.h"
 #include "parser.h"
+#include "serial.h"
 
 #define FRAMES_MAX 64
 #define STACK_MAX (FRAMES_MAX * UINT8_COUNT)

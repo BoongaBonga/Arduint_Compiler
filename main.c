@@ -79,7 +79,10 @@ static void setCmdFlags(int argc, char *argv[]) {
     case 'p': {
       // Get comPort
       if (i == argc - 1) {
-        fprintf(stderr, "Expect COM port name after '-p' flag.");
+        fprintf(
+            stderr,
+            "(0-0:0-0) %s[Error]: Expect COM port name after '-p' flag.%s\n",
+            COL_RED, AC_NORMAL);
         exit(2);
       }
       snprintf(cmdFlags.comPort, sizeof(cmdFlags.comPort), "\\\\.\\%s",

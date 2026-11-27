@@ -25,6 +25,26 @@ void *vecGet(const Vector *vec, unsigned int index);
 void freeVector(Vector *vec);
 
 //____________________________
+//        Circle buffers
+//____________________________
+
+typedef struct {
+  size_t elementSize;
+  void *arr;
+  void *head;
+  void *tail;
+  int capacity;
+  int count;
+} RingBuffer;
+
+RingBuffer makeRingBuffer(size_t elementSize, int capacity);
+void freeRingBuffer(RingBuffer *buff);
+bool ringBuffPush(RingBuffer *buff, const void *Src);
+bool ringBuffPushArr(RingBuffer *buff, int length, const void *Src);
+void ringBuffPop(RingBuffer *buff, void *Dest);
+void ringBuffPopArr(RingBuffer *buff, int length, void *Dest);
+
+//____________________________
 //        Tables
 //____________________________
 

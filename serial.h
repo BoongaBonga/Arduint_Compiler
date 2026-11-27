@@ -19,8 +19,8 @@
 #define GETCHAR_NO_DATA_RECEIVED -2
 
 typedef enum {
-  PCKT_HEAD_SYNC = (uint8_t)200,
-  PCKT_HEAD_ASYNC = (uint8_t)201
+  PACKET_HEAD_SYNC = (uint8_t)200,
+  PACKET_HEAD_ASYNC = (uint8_t)201
 } PacketHeader;
 
 #define PACKET_NON_ARG_BYTES                                                   \
@@ -32,8 +32,14 @@ typedef struct {
   uint8_t *args;    // Argument list (max 124 bytes)
 } CommPacket;
 
-// Use a proper global variable for the CtrlHandler to safely access
-// static HANDLE globalCommHandle = INVALID_HANDLE_VALUE;
+typedef struct {
+  HANDLE commHandle;
+} CommController;
+
+void startupCommController(char *port);
+void exitCommController();
+void pushSerialCommand(uint8_t op);
+void pushSerialCommands(int amount, const uint8_t *opList);
 
 /// @brief Open a new serial handle
 /// @return HANDLE | NULL

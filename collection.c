@@ -207,6 +207,124 @@ ObjString *tableFindString(Table *table, const char *chars, int length,
   }
 }
 
+//_______________________GENERIC RINGBUFFERS____________________
+
+RingBuffer makeRingBuffer(size_t elementSize, int capacity) {
+  RingBuffer buff;
+  buff.elementSize = elementSize;
+  buff.capacity = capacity;
+  buff.count = 0;
+  buff.arr = NULL;
+  buff.head = NULL;
+  buff.tail = NULL;
+
+  if (elementSize == 0 || capacity <= 0) return buff;
+
+  buff.arr = malloc((size_t)capacity * elementSize);
+  if (buff.arr == NULL) {
+    buff.capacity = 0;
+    return buff;
+  }
+  buff.head = buff.arr;
+  buff.tail = buff.arr;
+  return buff;
+}
+
+void freeRingBuffer(RingBuffer *buff) {
+  free(buff->arr);
+  buff->arr = NULL;
+  buff->head = NULL;
+  buff->tail = NULL;
+  buff->capacity = 0;
+  buff->count = 0;
+}
+
+bool ringBuffPush(RingBuffer *buff, const void *Src) {
+  if (buff == NULL || buff->arr == NULL || buff->head == NULL ||
+      buff->count >= buff->capacity || Src == NULL)
+    return false;
+  memcpy(buff->head, Src, buff->elementSize);
+  buff->head = (char *)buff->head + buff->elementSize;
+  if ((char *)buff->head >=
+      (char *)buff->arr + (size_t)buff->capacity * buff->elementSize)
+    buff->head = buff->arr;
+  buff->count++;
+  return true;
+}
+
+bool ringBuffPushArr(RingBuffer *buff, int length, const void *Src) {
+  if (buff == NULL || buff->arr == NULL || buff->head == NULL || length <= 0 ||
+      buff->count + length > buff->capacity || Src == NULL)
+    return false;
+
+  int lenBeforeEnd =
+      buff->capacity -
+      (int)((char *)buff->head - (char *)buff->arr) / buff->elementSize;
+  int firstAmount = length < lenBeforeEnd ? length : lenBeforeEnd;
+  char *src = (char *)Src;
+  char *end = (char *)buff->arr + (size_t)buff->capacity * buff->elementSize;
+
+  memcpy(buff->head, src, (size_t)firstAmount * buff->elementSize);
+  buff->head = (char *)buff->head + (size_t)firstAmount * buff->elementSize;
+
+  if ((char *)buff->head == end) buff->head = buff->arr;
+
+  int remainingAmount = length - firstAmount;
+  if (remainingAmount > 0) {
+    memcpy(buff->head, src + (size_t)firstAmount * buff->elementSize,
+           (size_t)remainingAmount * buff->elementSize);
+    buff->head =
+        (char *)buff->head + (size_t)remainingAmount * buff->elementSize;
+
+    if ((char *)buff->head == end) buff->head = buff->arr;
+  }
+
+  buff->count += length;
+  return true;
+}
+
+void ringBuffPop(RingBuffer *buff, void *Dest) {
+  if (buff == NULL || buff->arr == NULL || buff->tail == NULL ||
+      buff->count == 0 || Dest == NULL)
+    return;
+  memcpy(Dest, buff->tail, buff->elementSize);
+  buff->tail = (char *)buff->tail + buff->elementSize;
+  if ((char *)buff->tail >=
+      (char *)buff->arr + (size_t)buff->capacity * buff->elementSize)
+    buff->tail = buff->arr;
+  buff->count--;
+}
+
+void ringBuffPopArr(RingBuffer *buff, int length, void *Dest) {
+  if (buff == NULL || buff->arr == NULL || buff->tail == NULL || length <= 0 ||
+      length > buff->count || Dest == NULL)
+    return;
+
+  int lenBeforeEnd =
+      buff->capacity -
+      (int)((char *)buff->tail - (char *)buff->arr) / buff->elementSize;
+  int firstAmount = length < lenBeforeEnd ? length : lenBeforeEnd;
+  char *dest = (char *)Dest;
+  char *end = (char *)buff->arr + (size_t)buff->capacity * buff->elementSize;
+
+  memcpy(dest, buff->tail, (size_t)firstAmount * buff->elementSize);
+  buff->tail = (char *)buff->tail + (size_t)firstAmount * buff->elementSize;
+
+  if ((char *)buff->tail == end) buff->tail = buff->arr;
+
+  int remainingAmount = length - firstAmount;
+  if (remainingAmount > 0) {
+    memcpy(dest + (size_t)firstAmount * buff->elementSize, buff->tail,
+           (size_t)remainingAmount * buff->elementSize);
+    buff->tail =
+        (char *)buff->tail + (size_t)remainingAmount * buff->elementSize;
+
+    if ((char *)buff->tail == end) buff->tail = buff->arr;
+  }
+
+  buff->count -= length;
+}
+
 //_______________________GENERIC TABLES____________________
 
 GenericTable initGenericTable(size_t elementSize) {

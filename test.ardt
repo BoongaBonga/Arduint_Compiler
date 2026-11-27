@@ -1,3 +1,6 @@
-print "hi"
-
-print null + 2
+loop{
+  setPin 6 to HIGH
+  delay 1s
+  setPin 6 to LOW
+  delay 1s
+}

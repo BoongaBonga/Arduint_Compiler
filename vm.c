@@ -46,10 +46,6 @@ const char VALUE_TYPE_NAMES[4][8] = {
     [VAL_OBJECT] = "object",
 };
 
-volatile bool keepRunning = true;
-HANDLE commHandle = INVALID_HANDLE_VALUE;
-uint32_t packetIdCounter = 0;
-
 static ValueType convToValueType(ConversionType type) {
   switch (type) {
   case CONV_NULL:     return VAL_NULL;
@@ -95,71 +91,9 @@ static uint8_t makeVPI(bool value, uint8_t port, uint8_t index) {
          (value << SERMASK_DVALUE);
 }
 
-BOOL WINAPI CtrlHandler(DWORD fdwCtrlType) {
-  if (fdwCtrlType == CTRL_C_EVENT) {
-    keepRunning = false;
-    printf("\n[Ctrl+C] Exiting...\n");
-
-    if (commHandle != INVALID_HANDLE_VALUE) {
-      // 1. Abort any ongoing read/write operations immediately
-      PurgeComm(commHandle,
-                PURGE_TXABORT | PURGE_RXABORT | PURGE_TXCLEAR | PURGE_RXCLEAR);
-      // 2. Safely close the Windows kernel handle
-      CloseHandle(commHandle);
-      printf("\nCOM port closed cleanly.\n");
-    }
-
-    ExitProcess(0);
-  }
-  return TRUE;
-}
-
 static void resetStack(VM *vm) {
   vm->stackTop = vm->stack;
   vm->frameCount = 0;
-}
-
-static void initializeSerial(VM *vm) {
-  commHandle = openHandle(cmdFlags.comPort);
-
-  int result = configureDCB(commHandle);
-  switch (result) {
-  case 0: break;
-  case GETCOMMSTATE_ERROR:
-    runtimeError(vm, "Error getting state of COM port.");
-    exit(result);
-  case SETCOMMSTATE_ERROR:
-    runtimeError(vm, "Error setting state of COM port.");
-    exit(result);
-  case PURGECOMMBUF_ERROR:
-    runtimeError(vm, "Error cleaning up COM port buffer.");
-    exit(result);
-  case SETTIMEOUT_ERROR:
-    runtimeError(vm, "Error setting timeouts of COM port.");
-    exit(result);
-  }
-
-  printf("\n%sSerial initialized on PC. Waiting for Arduino reboot...%s\n",
-         COL_YELLOW, AC_NORMAL);
-  Sleep(2000); // Wait 2 seconds for Arduino bootloader
-
-  // Wait until 0xAA is received
-  while (keepRunning) {
-    int16_t input = commGetChar(commHandle);
-    if (input == 0xAA) break;
-    if (input == GETCHAR_COM_ERROR) {
-      runtimeError(vm, "Error whilst trying to read serial input.");
-      exit(READFILE_ERROR);
-    }
-    if (input == GETCHAR_NO_DATA_RECEIVED) continue;
-    fprintf(stderr,
-            "%sReceived unexpected byte during Arduino startup sequence: "
-            "'%d'%s\n",
-            COL_YELLOW, input, AC_NORMAL);
-  }
-
-  printf("%sConnected to Arduino! Ready to execute program.%s\n\n", COL_GREEN,
-         AC_NORMAL);
 }
 
 void initVM(Parser *parser, VM *vm) {
@@ -178,8 +112,7 @@ void initVM(Parser *parser, VM *vm) {
   // Setup Arduino
   vm->needsArduino = parser->needsArduino;
   if (vm->needsArduino) {
-    initializeSerial(vm);
-    SetConsoleCtrlHandler(CtrlHandler, TRUE);
+    startupCommController(cmdFlags.comPort);
   }
 
   printf("Program running. Press ctrl+C to safely quit.\n\n");
@@ -191,7 +124,7 @@ void freeVM(VM *vm) {
   freeTable(&vm->globals);
 
   // Close down Arduino
-  if (vm->needsArduino) CloseHandle(commHandle);
+  if (vm->needsArduino) exitCommController();
 }
 
 void push(VM *vm, Value value) { *vm->stackTop++ = value; }
@@ -507,6 +440,7 @@ static InterpretResult run(VM *vm) {
       printInstruction(
           frame->function->chunk,
           (int)(frame->ip - (uint8_t *)frame->function->chunk->byteCode.arr));
+      fflush(stdout);
     }
 
     uint8_t instruction;
@@ -704,29 +638,20 @@ static InterpretResult run(VM *vm) {
       bool value = valueVal.as.boolean;
 
       // Set the pin actually
-      // Create a com packet
-      CommPacket packet;
-      packet.packetHeader = PCKT_HEAD_ASYNC;
-      packet.id = packetIdCounter++;
-      packet.argCount = 4;
-
-      // And set the commands
-      uint8_t argList[4];
-
       // Pinmode
       //  Check if the pin to be set is already output
       if (vm->pinModes[pinNum] == PINMODE_INPUT) {
         vm->pinModes[pinNum] = PINMODE_OUTPUT;
 
-        argList[0] = SERIAL_COMMAND_PINMODE;
-        argList[1] = makeVPI(PINMODE_OUTPUT, pin.port, pin.index);
+        const uint8_t commands[2] = {
+            SERIAL_COMMAND_PINMODE,
+            makeVPI(PINMODE_OUTPUT, pin.port, pin.index)};
+        pushSerialCommands(2, commands);
       }
 
-      argList[2] = SERIAL_COMMAND_DWRITE;
-      argList[3] = makeVPI(value, pin.port, pin.index);
-
-      packet.args = argList;
-      sendCommPacket(commHandle, &packet);
+      const uint8_t commands[2] = {SERIAL_COMMAND_DWRITE,
+                                   makeVPI(value, pin.port, pin.index)};
+      pushSerialCommands(2, commands);
 
       break;
     }
